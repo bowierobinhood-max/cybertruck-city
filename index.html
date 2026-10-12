@@ -224,7 +224,7 @@ const renderer = new THREE.WebGLRenderer({
   canvas, antialias: QUAL[quality].antialias, powerPreference:'high-performance',
   alpha:false, stencil:false, depth:true
 });
-renderer.setClearColor(0x0a1220, 1);
+renderer.setClearColor(0x6fa0c8, 1);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
@@ -233,8 +233,8 @@ renderer.useLegacyLights = false;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x0a1220);
-scene.fog = new THREE.FogExp2(0x0a1220, 0.0012);
+scene.background = new THREE.Color(0x6fa0c8);
+scene.fog = new THREE.FogExp2(0x8eb8d8, 0.0008);
 
 const camera = new THREE.PerspectiveCamera(58, innerWidth/innerHeight, 0.8, QUAL[quality].far);
 
@@ -250,7 +250,7 @@ const fill = new THREE.DirectionalLight(0x88aacc, 0.25);
 fill.position.set(-80, 60, -40);
 scene.add(fill);
 
-let isNight = true;
+let isNight = false;
 
 /* Wider denser US city */
 const CITY = 560;
@@ -258,6 +258,54 @@ const BLOCK = 72;
 const ROAD_W = 22;
 const SIDE_ROAD = 16;
 const SIDEWALK = 4.5;
+
+/* Race track centerline (same oval as race mode) — used to keep buildings/props off asphalt */
+const TRACK_CTRL = [
+  [0, 105],
+  [55, 105],
+  [115, 105],
+  [150, 80],
+  [150, 20],
+  [150, -40],
+  [150, -100],
+  [115, -145],
+  [55, -145],
+  [0, -145],
+  [-55, -145],
+  [-115, -145],
+  [-150, -100],
+  [-150, -40],
+  [-150, 20],
+  [-150, 80],
+  [-115, 105],
+  [-55, 105],
+];
+const TRACK_HALF_W = 9.5;
+const TRACK_CLEAR_M = 13.5;
+
+function hitsTrackRibbon(x, z, clearM = TRACK_CLEAR_M){
+  const clear2 = clearM * clearM;
+  const n = TRACK_CTRL.length;
+  for(let i=0;i<n;i++){
+    const a=TRACK_CTRL[i], b=TRACK_CTRL[(i+1)%n];
+    const dx=b[0]-a[0], dz=b[1]-a[1];
+    const len2=dx*dx+dz*dz||1;
+    let t=((x-a[0])*dx+(z-a[1])*dz)/len2;
+    if(t<0)t=0; else if(t>1)t=1;
+    const px=a[0]+dx*t, pz=a[1]+dz*t;
+    const ddx=x-px, ddz=z-pz;
+    if(ddx*ddx+ddz*ddz < clear2) return true;
+  }
+  return false;
+}
+function buildingHitsTrack(x,z,w=0,d=0,clearM=TRACK_CLEAR_M){
+  const hw=(w||0)*0.55, hd=(d||0)*0.55;
+  if(hitsTrackRibbon(x,z,clearM)) return true;
+  if(hw<0.5 && hd<0.5) return false;
+  return hitsTrackRibbon(x+hw,z+hd,clearM) || hitsTrackRibbon(x+hw,z-hd,clearM)
+      || hitsTrackRibbon(x-hw,z+hd,clearM) || hitsTrackRibbon(x-hw,z-hd,clearM);
+}
+
 
 function noise(g,w,h,alpha=28){
   const img=g.getImageData(0,0,w,h); const d=img.data;
@@ -512,8 +560,11 @@ function placeKenneyBuildings(q){
     }
   }
   const n = Math.min(q.glbNear + (quality==='high'?8:4), slots.length);
-  for(let i=0;i<n;i++){
+  let placed = 0;
+  for(let i=0;i<slots.length && placed<n;i++){
     const sl = slots[i];
+    // Keep Kenney GLBs off the race asphalt ribbon
+    if(buildingHitsTrack(sl.x, sl.z, 16, 16, 15)) continue;
     const pool = (sl.sky && skys.length) ? skys : (lows.length?lows:kenneyTemplates);
     const tpl = pool[i % pool.length];
     const inst = tpl.scene.clone(true);
@@ -544,6 +595,7 @@ function placeKenneyBuildings(q){
     cityRoot.add(inst);
     const w = tpl.size.x * sc * fat, d = tpl.size.z * sc * fat, h = tpl.size.y * sc;
     addCollider(sl.x, sl.z, Math.max(w, 8), Math.max(d, 8), h);
+    placed++;
   }
 }
 
@@ -672,10 +724,12 @@ function buildCity(q){
           let h=28+Math.random()*Math.random()*160;
           if(downtown) h+=20+Math.random()*60;
           if(dist>5) h*=0.75;
+          if(buildingHitsTrack(px,pz,w,d)) continue;
           glassBuilds.push({x:px,z:pz,w,d,h,shade:0.72+Math.random()*0.35});
         } else {
           const w=10+Math.random()*10, d=10+Math.random()*12;
           const h=10+Math.random()*(downtown?36:24);
+          if(buildingHitsTrack(px,pz,w,d)) continue;
           brickBuilds.push({x:px,z:pz,w,d,h,shade:0.75+Math.random()*0.3});
         }
       }
@@ -684,9 +738,12 @@ function buildCity(q){
   for(let i=0;i<q.extraTowers;i++){
     const a=Math.random()*Math.PI*2;
     const r=220+Math.random()*200;
+    const ex=Math.cos(a)*r, ez=Math.sin(a)*r;
+    const ew=14+Math.random()*22, ed=14+Math.random()*22;
+    if(buildingHitsTrack(ex,ez,ew,ed)) continue;
     glassBuilds.push({
-      x:Math.cos(a)*r, z:Math.sin(a)*r,
-      w:14+Math.random()*22, d:14+Math.random()*22,
+      x:ex, z:ez,
+      w:ew, d:ed,
       h:80+Math.random()*160, shade:0.8+Math.random()*0.25
     });
   }
@@ -778,6 +835,7 @@ function buildCity(q){
     for(let t=-CITY*0.7; t<=CITY*0.7; t+=spacing){
       for(const [lx,lz,onX] of [[ROAD_W*0.55,t,true],[-ROAD_W*0.55,t,true],[t,ROAD_W*0.55,false],[t,-ROAD_W*0.55,false]]){
         if(Math.abs(t)<55) continue; // park area
+        if(hitsTrackRibbon(lx,lz, 12)) continue;
         const pole=new THREE.Mesh(cylGeo, lampPoleMat);
         pole.scale.set(0.28,7,0.28); pole.position.set(lx,3.5,lz); cityRoot.add(pole);
         const arm=new THREE.Mesh(boxGeo, lampPoleMat);
@@ -800,6 +858,7 @@ function buildCity(q){
   /* Traffic lights at main intersections */
   if(q.traffic){
     for(const [x,z] of [[48,48],[48,-48],[-48,48],[-48,-48],[BLOCK,BLOCK],[-BLOCK,BLOCK]]){
+      if(hitsTrackRibbon(x,z, 12)) continue;
       const pole=new THREE.Mesh(cylGeo, lampPoleMat);
       pole.scale.set(0.25,5,0.25); pole.position.set(x,2.5,z); cityRoot.add(pole);
       const box=new THREE.Mesh(boxGeo, new THREE.MeshStandardMaterial({color:0x1a1a1a, metalness:0.4, roughness:0.5}));
@@ -821,6 +880,7 @@ function buildCity(q){
     ['MIDTOWN|中城', '#3a2060', '#e0c0ff', -90, 30, -110, 0.4],
   ].slice(0, q.signs);
   for(const [text,bg,fg,x,y,z,yaw] of signs){
+    if(hitsTrackRibbon(x,z, 14)) continue;
     addBillboard(x,y,z,yaw, makeSignTexture(text,bg,fg));
   }
 
@@ -831,6 +891,9 @@ function buildCity(q){
     const t=(Math.random()-0.5)*CITY*1.1;
     const side=(Math.random()>0.5?1:-1)*(ROAD_W*0.5+3.5);
     if(Math.abs(t)<60) continue;
+    const px = alongMain ? side : t;
+    const pz = alongMain ? t : side;
+    if(hitsTrackRibbon(px,pz, 12)) continue;
     const g=new THREE.Group();
     const col=carColors[i%carColors.length];
     const body=new THREE.Mesh(boxGeo, new THREE.MeshStandardMaterial({color:col, metalness:0.45, roughness:0.4}));
@@ -847,6 +910,9 @@ function buildCity(q){
     const alongMain = Math.random()>0.5;
     const t = (Math.random()-0.5)*CITY*1.2;
     const lane = (Math.random()>0.5?1:-1)*4.5;
+    const tx0 = alongMain ? lane : t;
+    const tz0 = alongMain ? t : lane;
+    if(hitsTrackRibbon(tx0,tz0, 12)) continue;
     const g=new THREE.Group();
     const body=new THREE.Mesh(boxGeo, taxiMat);
     body.scale.set(1.6,0.7,3.2); body.position.y=0.55; g.add(body);
@@ -1479,28 +1545,7 @@ const coneMat = new THREE.MeshStandardMaterial({color:0xff6a1a, metalness:0.1, r
 const padMat = new THREE.MeshStandardMaterial({color:0x1a3048, metalness:0.4, roughness:0.5, emissive:0x0a2030, emissiveIntensity:0.4});
 const padMarkMat = new THREE.MeshBasicMaterial({color:0xffd76a, side:THREE.DoubleSide});
 
-/* —— Dedicated circuit control points (clockwise oval around Central Park) —— */
-const TRACK_CTRL = [
-  [0, 105],
-  [55, 105],
-  [115, 105],
-  [150, 80],
-  [150, 20],
-  [150, -40],
-  [150, -100],
-  [115, -145],
-  [55, -145],
-  [0, -145],
-  [-55, -145],
-  [-115, -145],
-  [-150, -100],
-  [-150, -40],
-  [-150, 20],
-  [-150, 80],
-  [-115, 105],
-  [-55, 105],
-];
-const TRACK_HALF_W = 9.5;
+/* —— Dedicated circuit: TRACK_CTRL / TRACK_HALF_W defined near CITY constants —— */
 let trackPoints = [];      // {x,z,yaw,nx,nz} dense samples
 let trackCheckpoints = []; // arches along track
 let trackBoosts = [];
