@@ -1886,15 +1886,12 @@ function resampleTrack(ctrl, step=8){
     const dx=b[0]-a[0], dz=b[1]-a[1];
     const len=Math.hypot(dx,dz)||1;
     const segs=Math.max(1, Math.round(len/step));
+    const yaw=Math.atan2(dx, dz); // face along segment (+Z local)
+    const nx=-Math.cos(yaw), nz=Math.sin(yaw); // left normal
     for(let s=0;s<segs;s++){
       const t=s/segs;
       const x=a[0]+dx*t, z=a[1]+dz*t;
-      const yaw=Math.atan2(dx, dz); // face along segment (+Z local)
-      // movement uses (-sin,-cos) for yaw=0 → -Z; track yaw for barriers:
-      // barrier left/right: perpendicular
-      const nx=-Math.cos(Math.atan2(dx,dz)); // left normal approx
-      const nz=Math.sin(Math.atan2(dx,dz));
-      pts.push({x,z,yaw:Math.atan2(dx,dz), nx:-Math.cos(Math.atan2(dx,dz)), nz:Math.sin(Math.atan2(dx,dz)), dist:0});
+      pts.push({x,z,yaw,nx,nz,dist:0});
     }
   }
   let acc=0;
@@ -1907,6 +1904,134 @@ function resampleTrack(ctrl, step=8){
   return pts;
 }
 
+/** Left unit normal of direction (dx,dz) in XZ (matches yaw=atan2(dx,dz)). */
+function trackLeftNormal(dx, dz){
+  const len=Math.hypot(dx,dz)||1;
+  return {nx:-dz/len, nz:dx/len};
+}
+
+/** Offset a closed centerline polyline with miter joins. dist>0 = left of travel. */
+function offsetClosedPolyline(pts, dist){
+  const n=pts.length;
+  const out=[];
+  for(let i=0;i<n;i++){
+    const a=pts[(i-1+n)%n], b=pts[i], c=pts[(i+1)%n];
+    const n1=trackLeftNormal(b.x-a.x, b.z-a.z);
+    const n2=trackLeftNormal(c.x-b.x, c.z-b.z);
+    let mx=n1.nx+n2.nx, mz=n1.nz+n2.nz;
+    let ml=Math.hypot(mx,mz);
+    if(ml<1e-5){ mx=n1.nx; mz=n1.nz; ml=1; }
+    mx/=ml; mz/=ml;
+    let den=mx*n1.nx+mz*n1.nz;
+    if(Math.abs(den)<0.28) den=den<0?-0.28:0.28;
+    let miter=dist/den;
+    const maxM=Math.abs(dist)*2.4;
+    if(miter>maxM) miter=maxM;
+    if(miter<-maxM) miter=-maxM;
+    out.push({x:b.x+mx*miter, z:b.z+mz*miter});
+  }
+  return out;
+}
+
+/** Build a closed vertical wall ribbon (shared verts = no gaps / no corner spikes). */
+function makeRailRibbonGeo(offsetPts, y0, y1, halfThick){
+  const n=offsetPts.length;
+  const positions=[];
+  const indices=[];
+  // Per-vertex horizontal normal from averaged tangents (miter-stable)
+  const nxArr=new Float32Array(n), nzArr=new Float32Array(n);
+  for(let i=0;i<n;i++){
+    const a=offsetPts[(i-1+n)%n], b=offsetPts[i], c=offsetPts[(i+1)%n];
+    let tx=c.x-a.x, tz=c.z-a.z;
+    let len=Math.hypot(tx,tz);
+    if(len<1e-6){ tx=c.x-b.x; tz=c.z-b.z; len=Math.hypot(tx,tz)||1; }
+    // left normal of tangent; thickness expands both ways along this axis
+    nxArr[i]=-tz/len; nzArr[i]=tx/len;
+  }
+  for(let i=0;i<n;i++){
+    const p=offsetPts[i];
+    const nx=nxArr[i], nz=nzArr[i];
+    const ix=p.x-nx*halfThick, iz=p.z-nz*halfThick;
+    const ox=p.x+nx*halfThick, oz=p.z+nz*halfThick;
+    // 0 inner-bottom, 1 outer-bottom, 2 outer-top, 3 inner-top
+    positions.push(ix,y0,iz, ox,y0,oz, ox,y1,oz, ix,y1,iz);
+  }
+  for(let i=0;i<n;i++){
+    const a=i*4, b=((i+1)%n)*4;
+    // outer
+    indices.push(a+1,b+1,b+2, a+1,b+2,a+2);
+    // inner
+    indices.push(a+0,a+3,b+3, a+0,b+3,b+0);
+    // top
+    indices.push(a+3,a+2,b+2, a+3,b+2,b+3);
+  }
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions,3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+/** Continuous barrier + neon top along mitered offset polyline (single mesh each side). */
+function addContinuousRail(offsetPts, barrierMat, neonMat){
+  if(offsetPts.length < 3) return;
+  const wall=new THREE.Mesh(makeRailRibbonGeo(offsetPts, 0.0, 1.08, 0.22), barrierMat);
+  trackGroup.add(wall);
+  const strip=new THREE.Mesh(makeRailRibbonGeo(offsetPts, 1.05, 1.16, 0.10), neonMat);
+  trackGroup.add(strip);
+}
+
+/** Flat closed road strip between left/right offset polylines. */
+function makeRoadRibbonGeo(leftPts, rightPts, y){
+  const n=leftPts.length;
+  const positions=[], uvs=[], indices=[];
+  let dist=0;
+  for(let i=0;i<n;i++){
+    const L=leftPts[i], R=rightPts[i];
+    positions.push(L.x,y,L.z, R.x,y,R.z);
+    const j=(i+1)%n;
+    const step=Math.hypot(leftPts[j].x-L.x, leftPts[j].z-L.z);
+    uvs.push(0, dist*0.08, 1, dist*0.08);
+    dist+=step;
+  }
+  for(let i=0;i<n;i++){
+    const a=i*2, b=((i+1)%n)*2;
+    indices.push(a,b,b+1, a,b+1,a+1);
+  }
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions,3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs,2));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+/** Thin edge-line ribbon along an offset polyline. */
+function makeEdgeLineGeo(offsetPts, y, halfW){
+  const n=offsetPts.length;
+  const positions=[], indices=[];
+  const nxArr=new Float32Array(n), nzArr=new Float32Array(n);
+  for(let i=0;i<n;i++){
+    const a=offsetPts[(i-1+n)%n], b=offsetPts[i], c=offsetPts[(i+1)%n];
+    let tx=c.x-a.x, tz=c.z-a.z;
+    let len=Math.hypot(tx,tz)||1;
+    nxArr[i]=-tz/len; nzArr[i]=tx/len;
+  }
+  for(let i=0;i<n;i++){
+    const p=offsetPts[i], nx=nxArr[i], nz=nzArr[i];
+    positions.push(p.x-nx*halfW, y, p.z-nz*halfW, p.x+nx*halfW, y, p.z+nz*halfW);
+  }
+  for(let i=0;i<n;i++){
+    const a=i*2, b=((i+1)%n)*2;
+    indices.push(a,b,b+1, a,b+1,a+1);
+  }
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions,3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  return geo;
+}
+
 function buildRaceTrack(){
   clearTrackMeshes();
   trackPoints = resampleTrack(TRACK_CTRL, 14);
@@ -1917,63 +2042,49 @@ function buildRaceTrack(){
   if(asphalt.map){ asphalt.map = asphalt.map.clone(); asphalt.map.wrapS=asphalt.map.wrapT=THREE.RepeatWrapping; asphalt.map.repeat.set(2,8); }
   applyEnvToMat(asphalt);
   const barrierMat = new THREE.MeshStandardMaterial({
-    color:0xc8d0d8, metalness:0.55, roughness:0.35,
-    emissive:0x102030, emissiveIntensity:0.25
+    color:0xc8d0d8, metalness:0.45, roughness:0.42,
+    emissive:0x102030, emissiveIntensity:0.2,
+    side:THREE.DoubleSide
   });
   applyEnvToMat(barrierMat);
-  const neonMat = new THREE.MeshBasicMaterial({color:0x33e8ff, transparent:true, opacity:0.85});
-  const redNeon = new THREE.MeshBasicMaterial({color:0xff4466, transparent:true, opacity:0.9});
+  const neonMat = new THREE.MeshBasicMaterial({color:0x33e8ff, transparent:true, opacity:0.95, side:THREE.DoubleSide});
+  const redNeon = new THREE.MeshBasicMaterial({color:0xff4466, transparent:true, opacity:0.95, side:THREE.DoubleSide});
   const chevronMat = new THREE.MeshBasicMaterial({color:0xffe066, transparent:true, opacity:0.75, side:THREE.DoubleSide});
   const boostMat = new THREE.MeshBasicMaterial({color:0x66ffaa, transparent:true, opacity:0.7, side:THREE.DoubleSide});
   const finishMat = new THREE.MeshBasicMaterial({color:0xffffff, side:THREE.DoubleSide});
 
   const hw = TRACK_HALF_W;
-  for(let i=0;i<trackPoints.length;i++){
-    const p=trackPoints[i];
-    const q=trackPoints[(i+1)%trackPoints.length];
-    const dx=q.x-p.x, dz=q.z-p.z;
-    const len=Math.hypot(dx,dz)||7;
-    const yaw=Math.atan2(dx, dz); // local +Z along segment
-    const mx=(p.x+q.x)*0.5, mz=(p.z+q.z)*0.5;
-    const nx=-Math.cos(yaw), nz=Math.sin(yaw); // left normal
-    // asphalt ribbon as thin box (stable orientation)
-    const road=new THREE.Mesh(boxGeo, asphalt);
-    road.scale.set(hw*2, 0.14, len*1.08);
-    road.position.set(mx, 0.07, mz);
-    road.rotation.y=yaw;
+  const centerPts = trackPoints.map(p=>({x:p.x,z:p.z}));
+  // Continuous asphalt + edge lines (mitered offsets — no segment gaps at bends)
+  {
+    const leftEdge = offsetClosedPolyline(centerPts, hw);
+    const rightEdge = offsetClosedPolyline(centerPts, -hw);
+    const road=new THREE.Mesh(makeRoadRibbonGeo(leftEdge, rightEdge, 0.08), asphalt);
     road.receiveShadow=true;
     trackGroup.add(road);
-    // edge lines (thin boxes on surface)
-    for(const side of [-1,1]){
-      const edge=new THREE.Mesh(boxGeo, whiteLineMat);
-      edge.scale.set(0.38, 0.04, len*1.05);
-      edge.position.set(mx+nx*side*(hw-0.45), 0.15, mz+nz*side*(hw-0.45));
-      edge.rotation.y=yaw;
-      trackGroup.add(edge);
-    }
-    // barriers every other segment (visual rails); no physics colliders — off-track uses soft respawn
-    if(i%2===0){
-      for(const side of [-1,1]){
-        const bx=mx+nx*side*(hw+0.75), bz=mz+nz*side*(hw+0.75);
-        const wall=new THREE.Mesh(boxGeo, barrierMat);
-        wall.scale.set(0.38, 1.05, len*2.05);
-        wall.position.set(bx, 0.55, bz);
-        wall.rotation.y=yaw;
-        trackGroup.add(wall);
-        const strip=new THREE.Mesh(boxGeo, side>0?neonMat:redNeon);
-        strip.scale.set(0.16, 0.1, len*2.05);
-        strip.position.set(bx, 1.12, bz);
-        strip.rotation.y=yaw;
-        trackGroup.add(strip);
-      }
-    }
-    if(i%3===0){
-      const ch=new THREE.Mesh(boxGeo, chevronMat);
-      ch.scale.set(2.6, 0.05, 1.8);
-      ch.position.set(mx, 0.16, mz);
-      ch.rotation.y=yaw;
-      trackGroup.add(ch);
-    }
+    const leftLine = offsetClosedPolyline(centerPts, hw-0.45);
+    const rightLine = offsetClosedPolyline(centerPts, -(hw-0.45));
+    trackGroup.add(new THREE.Mesh(makeEdgeLineGeo(leftLine, 0.16, 0.2), whiteLineMat));
+    trackGroup.add(new THREE.Mesh(makeEdgeLineGeo(rightLine, 0.16, 0.2), whiteLineMat));
+  }
+  for(let i=0;i<trackPoints.length;i+=3){
+    const p=trackPoints[i];
+    const q=trackPoints[(i+1)%trackPoints.length];
+    const yaw=Math.atan2(q.x-p.x, q.z-p.z);
+    const ch=new THREE.Mesh(boxGeo, chevronMat);
+    ch.scale.set(2.6, 0.05, 1.8);
+    ch.position.set(p.x, 0.17, p.z);
+    ch.rotation.y=yaw;
+    trackGroup.add(ch);
+  }
+
+  // Continuous side rails from mitered offset polylines (flush joints, no gaps/spikes)
+  {
+    const railDist = hw + 0.85;
+    const leftRail = offsetClosedPolyline(centerPts, railDist);
+    const rightRail = offsetClosedPolyline(centerPts, -railDist);
+    addContinuousRail(leftRail, barrierMat, neonMat);   // left = cyan
+    addContinuousRail(rightRail, barrierMat, redNeon);  // right = red
   }
 
   // Center dashes along track
@@ -2086,6 +2197,10 @@ function buildRaceTrack(){
   }
 
   trackBuilt=true;
+  // debug: count rail ribbon meshes
+  window.__trackRail = {pts:trackPoints.length, kids:trackGroup.children.length};
+
+
   styleTrackCheckpoints();
 }
 
