@@ -514,7 +514,8 @@ function buildCity(q){
       const n = Math.min(q.perBlock, offsets.length);
       // shuffle-ish pick
       for(let bi=0; bi<n; bi++){
-        const [ox,oz] = offsets[(bi*3 + (ix+iz+7)*2) % offsets.length];
+        const oi = ((bi*3 + (ix+iz+7)*2) % offsets.length + offsets.length) % offsets.length;
+        const [ox,oz] = offsets[oi];
         // keep clear of road center
         let px = cx + ox * (BLOCK - ROAD_W*0.7);
         let pz = cz + oz * (BLOCK - ROAD_W*0.7);
@@ -1341,7 +1342,12 @@ function tick(now){
   renderer.render(scene, camera);
 }
 
-applyQuality(quality, true);
+try{
+  applyQuality(quality, true);
+}catch(e){
+  console.error(e);
+  try{ toast('场景构建出错，已降级启动'); }catch(_){}
+}
 try{
   const q=new URLSearchParams(location.search).get('mode');
   if(q==='free'||q==='rings'||q==='coins') setTimeout(()=>startMode(q),150);
