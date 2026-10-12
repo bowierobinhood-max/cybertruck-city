@@ -1972,12 +1972,27 @@ function makeRailRibbonGeo(offsetPts, y0, y1, halfThick){
   return geo;
 }
 
+/** Resample closed XZ polyline via Catmull-Rom for smooth continuous rails. */
+function densifyClosedPolyline(pts, spacing=3.5){
+  if(pts.length < 3) return pts.slice();
+  const curve = new THREE.CatmullRomCurve3(pts.map(p=>new THREE.Vector3(p.x,0,p.z)), true, 'catmullrom', 0.15);
+  const len = curve.getLength();
+  const n = Math.max(pts.length, Math.ceil(len / spacing));
+  const out=[];
+  for(let i=0;i<n;i++){
+    const v = curve.getPoint(i/n);
+    out.push({x:v.x, z:v.z});
+  }
+  return out;
+}
+
 /** Continuous barrier + neon top along mitered offset polyline (single mesh each side). */
 function addContinuousRail(offsetPts, barrierMat, neonMat){
   if(offsetPts.length < 3) return;
-  const wall=new THREE.Mesh(makeRailRibbonGeo(offsetPts, 0.0, 1.08, 0.22), barrierMat);
+  const smooth = densifyClosedPolyline(offsetPts, 3.2);
+  const wall=new THREE.Mesh(makeRailRibbonGeo(smooth, 0.0, 1.08, 0.22), barrierMat);
   trackGroup.add(wall);
-  const strip=new THREE.Mesh(makeRailRibbonGeo(offsetPts, 1.05, 1.16, 0.10), neonMat);
+  const strip=new THREE.Mesh(makeRailRibbonGeo(smooth, 1.05, 1.16, 0.10), neonMat);
   trackGroup.add(strip);
 }
 
@@ -2057,13 +2072,13 @@ function buildRaceTrack(){
   const centerPts = trackPoints.map(p=>({x:p.x,z:p.z}));
   // Continuous asphalt + edge lines (mitered offsets — no segment gaps at bends)
   {
-    const leftEdge = offsetClosedPolyline(centerPts, hw);
-    const rightEdge = offsetClosedPolyline(centerPts, -hw);
+    const leftEdge = densifyClosedPolyline(offsetClosedPolyline(centerPts, hw), 4);
+    const rightEdge = densifyClosedPolyline(offsetClosedPolyline(centerPts, -hw), 4);
     const road=new THREE.Mesh(makeRoadRibbonGeo(leftEdge, rightEdge, 0.08), asphalt);
     road.receiveShadow=true;
     trackGroup.add(road);
-    const leftLine = offsetClosedPolyline(centerPts, hw-0.45);
-    const rightLine = offsetClosedPolyline(centerPts, -(hw-0.45));
+    const leftLine = densifyClosedPolyline(offsetClosedPolyline(centerPts, hw-0.45), 4);
+    const rightLine = densifyClosedPolyline(offsetClosedPolyline(centerPts, -(hw-0.45)), 4);
     trackGroup.add(new THREE.Mesh(makeEdgeLineGeo(leftLine, 0.16, 0.2), whiteLineMat));
     trackGroup.add(new THREE.Mesh(makeEdgeLineGeo(rightLine, 0.16, 0.2), whiteLineMat));
   }
