@@ -281,7 +281,10 @@ const TRACK_CTRL = [
   [-55, 105],
 ];
 const TRACK_HALF_W = 9.5;
-const TRACK_CLEAR_M = 13.5;
+/* Aggressive corridor clear: asphalt is ~19m wide; keep buildings ~26m and props ~18m from centerline */
+const TRACK_CLEAR_BUILDING = 28;
+const TRACK_CLEAR_PROP = 20;
+const TRACK_CLEAR_M = TRACK_CLEAR_BUILDING;
 
 function hitsTrackRibbon(x, z, clearM = TRACK_CLEAR_M){
   const clear2 = clearM * clearM;
@@ -298,12 +301,54 @@ function hitsTrackRibbon(x, z, clearM = TRACK_CLEAR_M){
   }
   return false;
 }
-function buildingHitsTrack(x,z,w=0,d=0,clearM=TRACK_CLEAR_M){
-  const hw=(w||0)*0.55, hd=(d||0)*0.55;
+/** True if any sample across the footprint AABB is within clearM of the track centerline. */
+function buildingHitsTrack(x,z,w=0,d=0,clearM=TRACK_CLEAR_BUILDING){
+  const hw=Math.max(0, (w||0)*0.5), hd=Math.max(0, (d||0)*0.5);
   if(hitsTrackRibbon(x,z,clearM)) return true;
-  if(hw<0.5 && hd<0.5) return false;
-  return hitsTrackRibbon(x+hw,z+hd,clearM) || hitsTrackRibbon(x+hw,z-hd,clearM)
-      || hitsTrackRibbon(x-hw,z+hd,clearM) || hitsTrackRibbon(x-hw,z-hd,clearM);
+  if(hw < 0.25 && hd < 0.25) return false;
+  // Dense grid so long/fat buildings cannot clip the ribbon between corners
+  const gx = Math.max(1, Math.ceil(hw / 3.5));
+  const gz = Math.max(1, Math.ceil(hd / 3.5));
+  for(let ix=0; ix<=gx; ix++){
+    for(let iz=0; iz<=gz; iz++){
+      if(ix===0 && iz===0) continue;
+      const ox = hw * (ix / gx);
+      const oz = hd * (iz / gz);
+      if(hitsTrackRibbon(x+ox,z+oz,clearM) || hitsTrackRibbon(x+ox,z-oz,clearM)
+      || hitsTrackRibbon(x-ox,z+oz,clearM) || hitsTrackRibbon(x-ox,z-oz,clearM)) return true;
+    }
+  }
+  return false;
+}
+function scrubCollidersOffTrack(){
+  for(let i=colliders.length-1;i>=0;i--){
+    const c=colliders[i];
+    const cx=(c.minx+c.maxx)*0.5, cz=(c.minz+c.maxz)*0.5;
+    const w=c.maxx-c.minx, d=c.maxz-c.minz;
+    // Inflate for any yaw residual / bbox under-estimate
+    if(buildingHitsTrack(cx, cz, w*1.15, d*1.15, TRACK_CLEAR_BUILDING)) colliders.splice(i,1);
+  }
+}
+/** Remove any Kenney/group meshes whose world AABB still intersects the race corridor. */
+function scrubKenneyMeshesOffTrack(){
+  const doomed=[];
+  cityRoot.traverse(o=>{
+    if(!o.isObject3D || o===cityRoot) return;
+    // Only top-level-ish groups with multiple meshes (Kenney clones)
+    if(!o.isGroup || !o.parent || o.parent!==cityRoot) return;
+    if(!o.children || o.children.length<2) return;
+    o.updateWorldMatrix(true, true);
+    const box = new THREE.Box3().setFromObject(o);
+    if(box.isEmpty()) return;
+    const cx=(box.min.x+box.max.x)*0.5, cz=(box.min.z+box.max.z)*0.5;
+    const w=box.max.x-box.min.x, d=box.max.z-box.min.z;
+    if(w<1 && d<1) return;
+    if(buildingHitsTrack(cx, cz, w, d, TRACK_CLEAR_BUILDING)) doomed.push(o);
+  });
+  for(const o of doomed){
+    cityRoot.remove(o);
+  }
+  if(doomed.length) console.info('scrubbed Kenney off track:', doomed.length);
 }
 
 
@@ -563,15 +608,17 @@ function placeKenneyBuildings(q){
   let placed = 0;
   for(let i=0;i<slots.length && placed<n;i++){
     const sl = slots[i];
-    // Keep Kenney GLBs off the race asphalt ribbon
-    if(buildingHitsTrack(sl.x, sl.z, 16, 16, 15)) continue;
     const pool = (sl.sky && skys.length) ? skys : (lows.length?lows:kenneyTemplates);
     const tpl = pool[i % pool.length];
-    const inst = tpl.scene.clone(true);
     const wantH = sl.h;
     const sc = wantH / Math.max(0.01, tpl.size.y);
     // Uniform horizontal scale from height; slight fatten for presence
     const fat = sl.sky ? 1.15 : 1.35;
+    const w = tpl.size.x * sc * fat, d = tpl.size.z * sc * fat, h = tpl.size.y * sc;
+    // Rotation-safe: yaw can be arbitrary, so clear a circle covering the footprint diagonal
+    const span = Math.max(Math.hypot(w, d), 14);
+    if(buildingHitsTrack(sl.x, sl.z, span, span, TRACK_CLEAR_BUILDING)) continue;
+    const inst = tpl.scene.clone(true);
     inst.scale.set(sc*fat, sc, sc*fat);
     inst.rotation.y = sl.yaw + (i%3)*0.15;
     inst.position.set(sl.x, 0, sl.z);
@@ -593,7 +640,6 @@ function placeKenneyBuildings(q){
       }
     });
     cityRoot.add(inst);
-    const w = tpl.size.x * sc * fat, d = tpl.size.z * sc * fat, h = tpl.size.y * sc;
     addCollider(sl.x, sl.z, Math.max(w, 8), Math.max(d, 8), h);
     placed++;
   }
@@ -630,6 +676,7 @@ function buildCity(q){
   for(let i=0;i<q.treeCount;i++){
     const a=Math.random()*Math.PI*2, r=16+Math.random()*30;
     const tx=Math.cos(a)*r, tz=Math.sin(a)*r;
+    if(hitsTrackRibbon(tx,tz, TRACK_CLEAR_PROP)) continue;
     const trunk=new THREE.Mesh(cylGeo, trunkMat);
     trunk.scale.set(0.7,3+Math.random(),0.7); trunk.position.set(tx,1.5,tz); trunk.castShadow=q.shadows; cityRoot.add(trunk);
     const crown=new THREE.Mesh(sphereGeo, treeMat);
@@ -813,13 +860,17 @@ function buildCity(q){
   if(pbrBrick && pbrBrick.color){
     buildingMatBrick.emissiveMap = brickMap;
   }
-  buildingMeshGlass = makeInstanced(glassBuilds, buildingMatGlass);
-  buildingMeshBrick = makeInstanced(brickBuilds, buildingMatBrick);
+  // Second-pass corridor scrub (margin already applied at push; keep safety net)
+  const glassSafe = glassBuilds.filter(b=>!buildingHitsTrack(b.x,b.z,b.w,b.d, TRACK_CLEAR_BUILDING));
+  const brickSafe = brickBuilds.filter(b=>!buildingHitsTrack(b.x,b.z,b.w,b.d, TRACK_CLEAR_BUILDING));
+  buildingMeshGlass = makeInstanced(glassSafe, buildingMatGlass);
+  buildingMeshBrick = makeInstanced(brickSafe, buildingMatBrick);
 
   /* Park ring lamps */
   if(q.lamps){
     for(let a=0;a<Math.PI*2;a+=Math.PI/6){
       const x=Math.cos(a)*48, z=Math.sin(a)*48;
+      if(hitsTrackRibbon(x,z, TRACK_CLEAR_PROP)) continue;
       const pole=new THREE.Mesh(cylGeo, lampPoleMat);
       pole.scale.set(0.32,7.5,0.32); pole.position.set(x,3.75,z); cityRoot.add(pole);
       const head=new THREE.Mesh(sphereGeo, lampHeadMat);
@@ -835,7 +886,7 @@ function buildCity(q){
     for(let t=-CITY*0.7; t<=CITY*0.7; t+=spacing){
       for(const [lx,lz,onX] of [[ROAD_W*0.55,t,true],[-ROAD_W*0.55,t,true],[t,ROAD_W*0.55,false],[t,-ROAD_W*0.55,false]]){
         if(Math.abs(t)<55) continue; // park area
-        if(hitsTrackRibbon(lx,lz, 12)) continue;
+        if(hitsTrackRibbon(lx,lz, TRACK_CLEAR_PROP)) continue;
         const pole=new THREE.Mesh(cylGeo, lampPoleMat);
         pole.scale.set(0.28,7,0.28); pole.position.set(lx,3.5,lz); cityRoot.add(pole);
         const arm=new THREE.Mesh(boxGeo, lampPoleMat);
@@ -858,7 +909,7 @@ function buildCity(q){
   /* Traffic lights at main intersections */
   if(q.traffic){
     for(const [x,z] of [[48,48],[48,-48],[-48,48],[-48,-48],[BLOCK,BLOCK],[-BLOCK,BLOCK]]){
-      if(hitsTrackRibbon(x,z, 12)) continue;
+      if(hitsTrackRibbon(x,z, TRACK_CLEAR_PROP)) continue;
       const pole=new THREE.Mesh(cylGeo, lampPoleMat);
       pole.scale.set(0.25,5,0.25); pole.position.set(x,2.5,z); cityRoot.add(pole);
       const box=new THREE.Mesh(boxGeo, new THREE.MeshStandardMaterial({color:0x1a1a1a, metalness:0.4, roughness:0.5}));
@@ -880,7 +931,7 @@ function buildCity(q){
     ['MIDTOWN|中城', '#3a2060', '#e0c0ff', -90, 30, -110, 0.4],
   ].slice(0, q.signs);
   for(const [text,bg,fg,x,y,z,yaw] of signs){
-    if(hitsTrackRibbon(x,z, 14)) continue;
+    if(hitsTrackRibbon(x,z, TRACK_CLEAR_PROP)) continue;
     addBillboard(x,y,z,yaw, makeSignTexture(text,bg,fg));
   }
 
@@ -893,7 +944,7 @@ function buildCity(q){
     if(Math.abs(t)<60) continue;
     const px = alongMain ? side : t;
     const pz = alongMain ? t : side;
-    if(hitsTrackRibbon(px,pz, 12)) continue;
+    if(hitsTrackRibbon(px,pz, TRACK_CLEAR_PROP)) continue;
     const g=new THREE.Group();
     const col=carColors[i%carColors.length];
     const body=new THREE.Mesh(boxGeo, new THREE.MeshStandardMaterial({color:col, metalness:0.45, roughness:0.4}));
@@ -912,7 +963,7 @@ function buildCity(q){
     const lane = (Math.random()>0.5?1:-1)*4.5;
     const tx0 = alongMain ? lane : t;
     const tz0 = alongMain ? t : lane;
-    if(hitsTrackRibbon(tx0,tz0, 12)) continue;
+    if(hitsTrackRibbon(tx0,tz0, TRACK_CLEAR_PROP)) continue;
     const g=new THREE.Group();
     const body=new THREE.Mesh(boxGeo, taxiMat);
     body.scale.set(1.6,0.7,3.2); body.position.y=0.55; g.add(body);
@@ -935,6 +986,8 @@ function buildCity(q){
   }
 
   try{ placeKenneyBuildings(q); }catch(e){ console.warn('kenney place', e); }
+  scrubKenneyMeshesOffTrack();
+  scrubCollidersOffTrack();
   try{ buildRaceTrack(); }catch(e){ console.warn('track build', e); }
 }
 
@@ -2324,8 +2377,18 @@ function updateTaxis(dt){
   for(const t of taxis){
     t.t += t.speed*dt;
     if(t.t>lim || t.t<-lim) t.speed*=-1;
-    if(t.alongMain){ t.mesh.position.set(t.lane,0,t.t); t.mesh.rotation.y = t.speed>=0?0:Math.PI; }
-    else { t.mesh.position.set(t.t,0,t.lane); t.mesh.rotation.y = t.speed>=0?Math.PI/2:-Math.PI/2; }
+    let x,z;
+    if(t.alongMain){ x=t.lane; z=t.t; t.mesh.rotation.y = t.speed>=0?0:Math.PI; }
+    else { x=t.t; z=t.lane; t.mesh.rotation.y = t.speed>=0?Math.PI/2:-Math.PI/2; }
+    // Skip across race corridor — bounce reverse instead of driving onto asphalt
+    if(hitsTrackRibbon(x,z, TRACK_CLEAR_PROP)){
+      t.speed*=-1;
+      t.t += t.speed*dt*2;
+      if(t.alongMain){ x=t.lane; z=t.t; } else { x=t.t; z=t.lane; }
+      if(hitsTrackRibbon(x,z, TRACK_CLEAR_PROP)){ t.mesh.visible=false; continue; }
+    }
+    t.mesh.visible=true;
+    t.mesh.position.set(x,0,z);
   }
 }
 
@@ -2620,8 +2683,26 @@ async function loadGameAssets(){
   setLoad(100, '完成');
   hideLoader();
   if(new URLSearchParams(location.search).has('debug')){
-    window.__fcc={carUsesGLB, kenney:kenneyTemplates.length, carChildren:car.children.length, env:!!envRT, pbr:!!pbrFacade, trackPts:trackPoints.length, cps:trackCheckpoints.length};
+    window.__fcc={carUsesGLB, kenney:kenneyTemplates.length, carChildren:car.children.length, env:!!envRT, pbr:!!pbrFacade, trackPts:trackPoints.length, cps:trackCheckpoints.length,
+      clearB:TRACK_CLEAR_BUILDING, clearP:TRACK_CLEAR_PROP, colliders:colliders.length};
     window.__race=race;
+    window.__probeTrack = function(){
+      let bad=0, asphaltOverlap=0; const samples=[];
+      for(const c of colliders){
+        const cx=(c.minx+c.maxx)/2, cz=(c.minz+c.maxz)/2;
+        const w=c.maxx-c.minx, d=c.maxz-c.minz;
+        if(buildingHitsTrack(cx,cz,w,d, TRACK_CLEAR_BUILDING)){ bad++; if(samples.length<8) samples.push({cx:cx|0,cz:cz|0,w:w|0,d:d|0}); }
+      }
+      const pad = TRACK_HALF_W + 2;
+      for(const p of trackPoints){
+        for(const c of colliders){
+          if(c.maxy < 1) continue;
+          if(p.x+pad < c.minx || p.x-pad > c.maxx || p.z+pad < c.minz || p.z-pad > c.maxz) continue;
+          asphaltOverlap++; break;
+        }
+      }
+      return {bad, asphaltOverlap, colliders:colliders.length, samples, clearB:TRACK_CLEAR_BUILDING, clearP:TRACK_CLEAR_PROP};
+    };
     console.log('FCC', window.__fcc);
   }
 }
