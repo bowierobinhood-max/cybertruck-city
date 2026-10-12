@@ -260,66 +260,78 @@ const SIDE_ROAD = 16;
 const SIDEWALK = 4.5;
 
 /* Race track centerline — used to keep buildings/props off asphalt */
-/* QQ Speed-style winding closed circuit (~3.5km of ribbon):
-   long straights, chicanes, center S-bend, SE hairpin, SW S, NW hairpin.
-   Start/finish on south plaza heading east. */
+/* QQ Speed pretzel / figure-8 circuit (~4.3km):
+   RIGHT lobe → CENTER CROSS → LEFT lobe → CROSS again →
+   NE hairpin → SOUTH nested hairpin lobe → back to start.
+   Silhouette is ∞ + southern knot (self-crossing), not an oval. */
 const TRACK_CTRL = [
-  // START — long eastbound straight
-  [-50, 350],
-  [70, 350],
-  [190, 350],
-  [290, 335],
-  // NE sweep → northbound
-  [360, 280],
-  [385, 200],
-  [375, 120],
-  [350, 55],
-  // Chicane (L-R-L)
-  [290, 20],
-  [210, 45],
-  [150, 5],
-  [90, 35],
-  [30, 5],
-  // Center S-bend
-  [-30, -40],
-  [-90, -95],
-  [-60, -160],
-  [10, -200],
-  [90, -220],
-  // SE hairpin (tight 180)
-  [180, -240],
-  [270, -270],
-  [330, -320],
-  [340, -380],
-  [290, -420],
-  [200, -435],
-  // South long westbound straight
-  [80, -435],
-  [-40, -430],
-  [-160, -410],
-  [-250, -370],
-  // SW S-bend
-  [-320, -300],
-  [-350, -220],
-  [-320, -140],
-  [-250, -90],
-  [-180, -40],
-  [-210, 30],
-  [-280, 90],
-  [-340, 150],
-  // West long northbound
-  [-370, 220],
-  [-375, 290],
-  [-340, 345],
-  // NW hairpin → east to start
-  [-280, 380],
-  [-180, 395],
-  [-100, 385]
+  // START — south long straight (westbound), clear of the ∞ cross
+  [150, -430],
+  [60, -450],
+  [-30, -440],
+  [-110, -400],
+  [-160, -340],
+  [-140, -270],
+  [-70, -230],
+  // Weave north toward start-of-∞ (will cross south dive later)
+  [10, -180],
+  [50, -120],
+  [40, -70],
+  [20, -40],
+  // Into RIGHT lobe of ∞ (NE)
+  [70, 20],
+  [130, 90],
+  [200, 150],
+  [280, 180],
+  [350, 150],
+  [390, 80],
+  [395, 0],
+  [370, -80],
+  [310, -140],
+  [220, -160],
+  [140, -130],
+  [80, -70],
+  // CENTER CROSS #1 — heading NW through the knot
+  [30, -10],
+  [-20, 50],
+  [-70, 110],
+  // LEFT lobe (west) CCW
+  [-130, 170],
+  [-210, 210],
+  [-300, 200],
+  [-360, 140],
+  [-390, 50],
+  [-385, -40],
+  [-340, -120],
+  [-260, -160],
+  [-170, -150],
+  [-90, -100],
+  // CENTER CROSS #1 again — heading SE (intersects NW pass = figure-8)
+  [-30, -30],
+  [30, 40],
+  [90, 100],
+  // NE spur hairpin then dive south
+  [160, 160],
+  [220, 200],
+  [280, 190],
+  [310, 130],
+  [290, 60],
+  [240, 10],
+  [170, -20],
+  [100, -60],
+  [40, -120],
+  [-20, -180],
+  // SOUTH nested pretzel lobe (tight hairpins)
+  [30, -240],
+  [110, -280],
+  [180, -320],
+  [200, -380]
+  // closes back to START [150,-430]
 ];
 const TRACK_HALF_W = 11;
-/* Corridor clear scaled with larger track: asphalt ~22m; buildings ~49m and props ~35m from centerline */
-const TRACK_CLEAR_BUILDING = 62;
-const TRACK_CLEAR_PROP = 42;
+/* Corridor clear for dense pretzel ribbon (crossings + hairpins) */
+const TRACK_CLEAR_BUILDING = 70;
+const TRACK_CLEAR_PROP = 48;
 const TRACK_CLEAR_M = TRACK_CLEAR_BUILDING;
 
 function hitsTrackRibbon(x, z, clearM = TRACK_CLEAR_M){
@@ -1675,7 +1687,7 @@ let race = {
   active:false, countdown:0, racing:false, finished:false,
   lap:1, totalLaps:3, cp:0, time:0, lapStart:0, bestLap:null,
   key:'track', targetTime:0, wrongWay:false, lastGoodCp:0,
-  startPos:{x:-50,y:0.95,z:350,yaw:Math.PI/2} // overwritten by buildRaceTrack
+  startPos:{x:150,y:0.95,z:-430,yaw:0} // overwritten by buildRaceTrack
 };
 
 const elLap = document.getElementById('lapVal');
