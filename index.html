@@ -17,21 +17,21 @@ html,body{width:100%;height:100%;overflow:hidden;background:#05070c;font-family:
 .stat .value.gold{color:#ffd76a}.stat .value.green{color:#6dffb0}
 #missionBox{position:absolute;top:12px;left:50%;transform:translateX(-50%);background:rgba(8,14,28,.78);border:1px solid rgba(130,230,255,.35);border-radius:12px;padding:10px 16px;text-align:center;min-width:240px;display:none}
 #missionBox h3{font-size:13px;color:#9fe7ff;margin-bottom:3px}#missionBox p{font-size:12px;opacity:.9}
-#toast{position:absolute;bottom:100px;left:50%;transform:translateX(-50%);background:rgba(20,40,80,.88);border:1px solid rgba(120,200,255,.4);padding:8px 16px;border-radius:999px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;white-space:nowrap}
+#toast{position:absolute;bottom:100px;left:50%;transform:translateX(-50%);background:rgba(20,40,80,.88);border:1px solid rgba(120,200,255,.4);padding:8px 16px;border-radius:999px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;white-space:nowrap;max-width:90vw;overflow:hidden;text-overflow:ellipsis}
 #toast.show{opacity:1}
 #controlsHint{position:absolute;right:12px;bottom:12px;background:rgba(8,14,28,.72);border:1px solid rgba(120,180,255,.22);border-radius:10px;padding:10px 12px;font-size:11px;line-height:1.5;max-width:230px}
 #controlsHint kbd{display:inline-block;min-width:16px;padding:0 4px;border-radius:3px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);font-size:10px}
 #menu{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at 50% 30%,rgba(30,60,120,.5),rgba(4,8,16,.94));pointer-events:auto}
 #menu.hidden{display:none}
-.card{width:min(420px,92vw);background:rgba(10,16,30,.92);border:1px solid rgba(120,180,255,.3);border-radius:18px;padding:24px 22px 18px;box-shadow:0 16px 48px rgba(0,0,0,.5)}
+.card{width:min(440px,92vw);max-height:92vh;overflow:auto;background:rgba(10,16,30,.92);border:1px solid rgba(120,180,255,.3);border-radius:18px;padding:24px 22px 18px;box-shadow:0 16px 48px rgba(0,0,0,.5)}
 .card h1{font-size:26px;font-weight:800;background:linear-gradient(90deg,#c8d0d8,#9fd4ff);-webkit-background-clip:text;background-clip:text;color:transparent;margin-bottom:6px}
 .card .sub{font-size:12px;opacity:.75;margin-bottom:14px;line-height:1.5}
 .quality{display:flex;gap:8px;align-items:center;margin-bottom:14px;font-size:13px}
 .quality span{opacity:.75;margin-right:4px}
 .quality button{flex:1;padding:8px 0;border-radius:8px;border:1px solid rgba(120,180,255,.3);background:rgba(30,50,90,.5);color:#dff;cursor:pointer;font-size:13px}
 .quality button.on{border-color:#7ec8ff;background:rgba(50,100,180,.65);font-weight:700}
-.modes{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
-.modes button{appearance:none;border:1px solid rgba(120,180,255,.35);background:linear-gradient(180deg,rgba(40,70,120,.55),rgba(20,35,70,.7));color:#eaf3ff;border-radius:11px;padding:12px 14px;text-align:left;cursor:pointer;font-size:14px;font-weight:600}
+.modes{display:flex;flex-direction:column;gap:6px;margin-bottom:12px;max-height:min(48vh,420px);overflow:auto;padding-right:2px}
+.modes button{appearance:none;border:1px solid rgba(120,180,255,.35);background:linear-gradient(180deg,rgba(40,70,120,.55),rgba(20,35,70,.7));color:#eaf3ff;border-radius:11px;padding:10px 12px;text-align:left;cursor:pointer;font-size:13px;font-weight:600}
 .modes button:hover{border-color:#8fd6ff}
 .modes button span{display:block;font-size:11px;font-weight:400;opacity:.7;margin-top:3px}
 .help{font-size:11px;opacity:.65;line-height:1.55}
@@ -101,6 +101,10 @@ html,body{width:100%;height:100%;overflow:hidden;background:#05070c;font-family:
         <button type="button" data-mode="free">自由驾驶<span>Explore the city · 练习飞行与穿楼</span></button>
         <button type="button" data-mode="rings">霓虹环竞速<span>Neon Ring Race · 依次穿过环门</span></button>
         <button type="button" data-mode="coins">金币寻宝<span>Coin Hunt · 收集漂浮金币</span></button>
+        <button type="button" data-mode="sbend">十秒 S 弯<span>10s S-Curve · 10 秒内穿过全部弯门</span></button>
+        <button type="button" data-mode="rooftop">限时穿城<span>Rooftop Rush · 限时飞到屋顶停机坪</span></button>
+        <button type="button" data-mode="lowgate">低空穿桥<span>Low Gates · 限高依次穿低门</span></button>
+        <button type="button" data-mode="cones">漂移绕桶<span>Cone Slalom · 绕桶计时挑战</span></button>
       </div>
       <p class="help">W/↑ 加速 · S/↓ 刹车倒车 · A/D 转向<br>空格/R 上升 · Shift/F 下降（松手保持高度）· C 视角 · N 昼夜</p>
     </div>
@@ -844,36 +848,77 @@ const car = new THREE.Group();
 scene.add(car);
 
 function makeTeslaLogoTex(kind){
-  // kind: 'T' (badge) or 'word' (TESLA wordmark)
+  // kind: 'T' (badge) or 'word' (TESLA wordmark) — closer to official badge proportions
   const c = document.createElement('canvas');
-  c.width = kind==='word' ? 512 : 256;
-  c.height = kind==='word' ? 128 : 256;
+  const W = kind==='word' ? 1024 : 512;
+  const H = kind==='word' ? 256 : 512;
+  c.width = W; c.height = H;
   const g = c.getContext('2d');
-  g.clearRect(0,0,c.width,c.height);
+  g.clearRect(0,0,W,H);
+  g.imageSmoothingEnabled = true;
+  g.imageSmoothingQuality = 'high';
   if(kind==='T'){
-    // circular dark badge + red Tesla T
-    g.fillStyle = 'rgba(15,18,22,0.92)';
-    g.beginPath(); g.arc(128,128,118,0,Math.PI*2); g.fill();
-    g.strokeStyle = '#c8cdd3'; g.lineWidth = 6; g.stroke();
-    g.fillStyle = '#e31937';
-    // stylized Tesla T: wide crossbar + tapered stem
+    const cx=W/2, cy=H/2, R=W*0.46;
+    // stainless-style recessed disc
+    const disc=g.createRadialGradient(cx-R*0.25,cy-R*0.3,R*0.1,cx,cy,R);
+    disc.addColorStop(0,'#3a3e44'); disc.addColorStop(0.55,'#1a1d22'); disc.addColorStop(1,'#0a0c0f');
+    g.fillStyle=disc;
+    g.beginPath(); g.arc(cx,cy,R,0,Math.PI*2); g.fill();
+    g.strokeStyle='rgba(200,210,220,0.55)'; g.lineWidth=W*0.014; g.stroke();
+    g.strokeStyle='rgba(0,0,0,0.55)'; g.lineWidth=W*0.008;
+    g.beginPath(); g.arc(cx,cy,R*0.92,0,Math.PI*2); g.stroke();
+    // Official-ish Tesla T: winged crossbar + triangular stem (red #cc0000 / #e31937)
+    const red='#cc0000', hi='#e31937';
+    const drawT=(col,ox,oy)=>{
+      g.fillStyle=col;
+      g.beginPath();
+      // winged top bar (flared ends, slight arch)
+      const y0=cy-R*0.38+oy, y1=cy-R*0.12+oy;
+      const xl=cx-R*0.62+ox, xr=cx+R*0.62+ox;
+      g.moveTo(xl, y0+R*0.06);
+      g.quadraticCurveTo(cx+ox, y0-R*0.04, xr, y0+R*0.06);
+      g.lineTo(xr+R*0.02, y1);
+      g.lineTo(cx+R*0.14+ox, y1);
+      // stem triangle
+      g.lineTo(cx+ox, cy+R*0.48+oy);
+      g.lineTo(cx-R*0.14+ox, y1);
+      g.lineTo(xl-R*0.02, y1);
+      g.closePath();
+      g.fill();
+    };
+    drawT('rgba(0,0,0,0.45)', 2, 3);
+    drawT(red, 0, 0);
+    // top highlight on bar
+    g.fillStyle=hi;
     g.beginPath();
-    g.moveTo(48,70); g.lineTo(208,70); g.lineTo(198,98);
-    g.lineTo(148,98); g.lineTo(148,198); g.lineTo(108,198);
-    g.lineTo(108,98); g.lineTo(58,98); g.closePath();
+    const y0=cy-R*0.38, y1=cy-R*0.28;
+    g.moveTo(cx-R*0.58, y0+R*0.07);
+    g.quadraticCurveTo(cx, y0-R*0.02, cx+R*0.58, y0+R*0.07);
+    g.lineTo(cx+R*0.55, y1);
+    g.quadraticCurveTo(cx, y1-R*0.06, cx-R*0.55, y1);
+    g.closePath();
     g.fill();
-    // slight highlight on bar
-    g.fillStyle = '#ff4d63';
-    g.fillRect(54,72,148,10);
   } else {
-    g.fillStyle = '#e31937';
-    g.font = 'bold 92px Arial, Helvetica, sans-serif';
-    g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.fillText('TESLA', 256, 64);
+    // wordmark with tracking + subtle emboss
+    const letters='TESLA';
+    g.font='800 150px "Helvetica Neue", Helvetica, Arial, sans-serif';
+    g.textAlign='center'; g.textBaseline='middle';
+    const spacing=168, total=(letters.length-1)*spacing;
+    const start=W/2-total/2;
+    for(let i=0;i<letters.length;i++){
+      const x=start+i*spacing;
+      g.fillStyle='rgba(0,0,0,0.45)';
+      g.fillText(letters[i], x+2, H/2+3);
+      g.fillStyle='#cc0000';
+      g.fillText(letters[i], x, H/2);
+      g.fillStyle='rgba(255,80,90,0.35)';
+      g.fillText(letters[i], x, H/2-1.5);
+    }
   }
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 4;
+  tex.anisotropy = Math.min(16, (typeof renderer.capabilities.getMaxAnisotropy==='function'?renderer.capabilities.getMaxAnisotropy():renderer.capabilities.getMaxAnisotropy)||8);
+  tex.needsUpdate = true;
   return tex;
 }
 
@@ -910,23 +955,53 @@ function wedgeGeo(w1, w2, h, len, topScaleFront=0.9, topScaleRear=0.95, frontTop
 function addTeslaBadges(root){
   const logoT = makeTeslaLogoTex('T');
   const logoWord = makeTeslaLogoTex('word');
-  const logoMat = new THREE.MeshBasicMaterial({map:logoT, transparent:true, depthWrite:false, side:THREE.DoubleSide});
-  const wordMat = new THREE.MeshBasicMaterial({map:logoWord, transparent:true, depthWrite:false, side:THREE.DoubleSide});
+  const logoMat = new THREE.MeshStandardMaterial({
+    map:logoT, transparent:true, depthWrite:false, side:THREE.DoubleSide,
+    metalness:0.55, roughness:0.35, emissive:0x220008, emissiveIntensity:0.15
+  });
+  const wordMat = new THREE.MeshStandardMaterial({
+    map:logoWord, transparent:true, depthWrite:false, side:THREE.DoubleSide,
+    metalness:0.4, roughness:0.4, emissive:0x180004, emissiveIntensity:0.12
+  });
+  const underMat = new THREE.MeshStandardMaterial({
+    color:0x0c0e11, metalness:0.85, roughness:0.4, side:THREE.DoubleSide
+  });
+  // front hood badge (recessed underlay + logo)
+  const frontUnder = new THREE.Mesh(planeGeo, underMat);
+  frontUnder.scale.set(0.42, 0.42, 1);
+  frontUnder.position.set(0, 1.14, 2.82);
+  frontUnder.rotation.x = -0.14;
+  root.add(frontUnder);
   const front = new THREE.Mesh(planeGeo, logoMat);
-  front.scale.set(0.38, 0.38, 1);
-  front.position.set(0, 1.15, 2.85);
-  front.rotation.x = -0.12;
+  front.scale.set(0.36, 0.36, 1);
+  front.position.set(0, 1.15, 2.86);
+  front.rotation.x = -0.14;
   root.add(front);
+  // rear circular badge
+  const rearUnder = new THREE.Mesh(planeGeo, underMat);
+  rearUnder.scale.set(0.34, 0.34, 1);
+  rearUnder.position.set(0, 1.34, -2.72);
+  rearUnder.rotation.y = Math.PI;
+  root.add(rearUnder);
   const rear = new THREE.Mesh(planeGeo, logoMat);
-  rear.scale.set(0.32, 0.32, 1);
-  rear.position.set(0, 1.35, -2.75);
+  rear.scale.set(0.30, 0.30, 1);
+  rear.position.set(0, 1.35, -2.76);
   rear.rotation.y = Math.PI;
   root.add(rear);
+  // rear TESLA wordmark
   const word = new THREE.Mesh(planeGeo, wordMat);
-  word.scale.set(0.9, 0.2, 1);
-  word.position.set(0, 0.72, -2.75);
+  word.scale.set(1.05, 0.22, 1);
+  word.position.set(0, 0.78, -2.78);
   word.rotation.y = Math.PI;
   root.add(word);
+  // side badges (subtle)
+  for(const sx of [1.22, -1.22]){
+    const side = new THREE.Mesh(planeGeo, logoMat);
+    side.scale.set(0.18, 0.18, 1);
+    side.position.set(sx, 1.05, 0.85);
+    side.rotation.y = Math.PI/2 * Math.sign(sx);
+    root.add(side);
+  }
 }
 
 function makeCarProcedural(){
@@ -1339,16 +1414,36 @@ function applyQuality(name, rebuild){
 /* ========== MISSIONS ========== */
 const ringGroup=new THREE.Group(); scene.add(ringGroup);
 const coinGroup=new THREE.Group(); scene.add(coinGroup);
-let rings=[], coins=[], score=0, mode='free', ringIndex=0, ringStartTime=0, missionDone=false;
+const challengeGroup=new THREE.Group(); scene.add(challengeGroup);
+let rings=[], coins=[], gates=[], score=0, mode='free', ringIndex=0, ringStartTime=0, missionDone=false, missionFailed=false;
+let missionLimit=0, missionElapsed=0, altLimit=0, helipad=null;
+let bestTimes={};
+try{ bestTimes=JSON.parse(localStorage.getItem('fcc_best')||'{}'); }catch(e){ bestTimes={}; }
+function saveBest(key, sec){
+  const prev=bestTimes[key];
+  if(prev==null || sec<prev){ bestTimes[key]=sec; localStorage.setItem('fcc_best', JSON.stringify(bestTimes)); return true; }
+  return false;
+}
+function bestLabel(key){
+  const b=bestTimes[key];
+  return b!=null ? `最佳 ${b.toFixed(1)}s` : '尚无纪录';
+}
 const sharedRingGeo = new THREE.TorusGeometry(5.2, 0.32, 6, 16);
 const sharedRingMat = new THREE.MeshBasicMaterial({color:0x33e0ff, transparent:true});
 const sharedCoinGeo = new THREE.CylinderGeometry(1.0,1.0,0.2,10);
 const sharedCoinMat = new THREE.MeshBasicMaterial({color:0xffd24a});
+const gateMatActive = new THREE.MeshBasicMaterial({color:0x33e0ff, transparent:true, opacity:0.95});
+const gateMatDone = new THREE.MeshBasicMaterial({color:0x226688, transparent:true, opacity:0.28});
+const coneMat = new THREE.MeshStandardMaterial({color:0xff6a1a, metalness:0.1, roughness:0.65, emissive:0x331100, emissiveIntensity:0.35});
+const padMat = new THREE.MeshStandardMaterial({color:0x1a3048, metalness:0.4, roughness:0.5, emissive:0x0a2030, emissiveIntensity:0.4});
+const padMarkMat = new THREE.MeshBasicMaterial({color:0xffd76a, side:THREE.DoubleSide});
 
 function clearMissionObjects(){
   while(ringGroup.children.length) ringGroup.remove(ringGroup.children[0]);
   while(coinGroup.children.length) coinGroup.remove(coinGroup.children[0]);
-  rings=[]; coins=[]; ringIndex=0; missionDone=false;
+  while(challengeGroup.children.length) challengeGroup.remove(challengeGroup.children[0]);
+  rings=[]; coins=[]; gates=[]; ringIndex=0; missionDone=false; missionFailed=false;
+  missionLimit=0; missionElapsed=0; altLimit=0; helipad=null;
 }
 function makeRing(x,y,z,yaw){
   const tor=new THREE.Mesh(sharedRingGeo, sharedRingMat.clone());
@@ -1357,6 +1452,31 @@ function makeRing(x,y,z,yaw){
   tor.rotation.set(Math.PI/2, yaw, 0);
   ringGroup.add(tor);
   return {mesh:tor, pos:new THREE.Vector3(x,y,z), passed:false};
+}
+function makeGate(x,y,z,yaw, w=7, h=5){
+  const g=new THREE.Group();
+  const postL=new THREE.Mesh(boxGeo, gateMatActive.clone());
+  postL.scale.set(0.35,h,0.35); postL.position.set(-w/2,h/2,0); g.add(postL);
+  const postR=postL.clone(); postR.position.x=w/2; g.add(postR);
+  const bar=new THREE.Mesh(boxGeo, gateMatActive.clone());
+  bar.scale.set(w+0.35,0.3,0.3); bar.position.set(0,h,0); g.add(bar);
+  // neon arch ring hint
+  const arc=new THREE.Mesh(new THREE.TorusGeometry(w*0.42,0.18,6,20,Math.PI), gateMatActive.clone());
+  arc.rotation.z=Math.PI; arc.position.y=h*0.15; g.add(arc);
+  g.position.set(x,y,z); g.rotation.y=yaw;
+  challengeGroup.add(g);
+  return {mesh:g, pos:new THREE.Vector3(x,y+h*0.45,z), yaw, w, h, passed:false, posts:[postL,postR,bar,arc]};
+}
+function setGateStyle(gate, active){
+  const mat=active?gateMatActive:gateMatDone;
+  for(const p of gate.posts){ p.material.color.copy(mat.color); p.material.opacity=mat.opacity; }
+}
+function makeCone(x,z){
+  const c=new THREE.Mesh(new THREE.ConeGeometry(0.55,1.35,8), coneMat);
+  c.position.set(x,0.68,z); c.castShadow=true; challengeGroup.add(c);
+  const stripe=new THREE.Mesh(new THREE.CylinderGeometry(0.42,0.48,0.18,8), new THREE.MeshBasicMaterial({color:0xffffff}));
+  stripe.position.set(x,0.55,z); challengeGroup.add(stripe);
+  return c;
 }
 function spawnRings(){
   clearMissionObjects();
@@ -1388,15 +1508,140 @@ function spawnCoins(){
     coins.push({mesh, taken:false});
   }
 }
+/* --- Challenge: 十秒 S 弯 --- */
+function spawnSBend(){
+  clearMissionObjects();
+  missionLimit=10;
+  // S-curve along northbound main road (clear of park buildings)
+  const pts=[];
+  for(let i=0;i<8;i++){
+    const t=i/7;
+    const z=48 - i*16;
+    const x=Math.sin(t*Math.PI*2)*18;
+    const y=1.2;
+    const yaw=Math.atan2(-(Math.sin((i+1)/7*Math.PI*2)*18-x), -((48-(i+1)*16)-z));
+    pts.push([x,y,z,yaw]);
+  }
+  for(const [x,y,z,yaw] of pts){
+    const g=makeGate(x,y,z,yaw, 8.5, 4.2);
+    gates.push(g);
+  }
+  setGateStyle(gates[0], true);
+  for(let i=1;i<gates.length;i++) setGateStyle(gates[i], false);
+}
+/* --- Challenge: 限时穿城 → rooftop helipad --- */
+function spawnRooftop(){
+  clearMissionObjects();
+  missionLimit=40;
+  // Place pad on a tall tower NE of park
+  const px=95, pz=-95, ph=78;
+  const pad=new THREE.Mesh(new THREE.CylinderGeometry(7.5,7.5,0.35,24), padMat);
+  pad.position.set(px, ph, pz); challengeGroup.add(pad);
+  const ring=new THREE.Mesh(new THREE.RingGeometry(3.2,6.8,24), padMarkMat);
+  ring.rotation.x=-Math.PI/2; ring.position.set(px, ph+0.22, pz); challengeGroup.add(ring);
+  // simple H mark via two boxes + bar
+  const h1=new THREE.Mesh(boxGeo, new THREE.MeshBasicMaterial({color:0xffd76a}));
+  h1.scale.set(0.5,0.08,3.2); h1.position.set(px-1.4,ph+0.25,pz); challengeGroup.add(h1);
+  const h2=h1.clone(); h2.position.x=px+1.4; challengeGroup.add(h2);
+  const h3=new THREE.Mesh(boxGeo, new THREE.MeshBasicMaterial({color:0xffd76a}));
+  h3.scale.set(3.2,0.08,0.5); h3.position.set(px,ph+0.25,pz); challengeGroup.add(h3);
+  const beacon=new THREE.PointLight(0xffd76a, 2.2, 40);
+  beacon.position.set(px, ph+4, pz); challengeGroup.add(beacon);
+  // guide rings in air toward pad
+  const path=[[30,18,-30],[55,35,-55],[78,55,-78],[px,ph+2,pz]];
+  for(let i=0;i<path.length-1;i++){
+    const [x,y,z]=path[i];
+    const [nx,ny,nz]=path[i+1];
+    const yaw=Math.atan2(-(nx-x), -(nz-z));
+    const g=makeGate(x,y,z,yaw, 9, 5);
+    gates.push(g); setGateStyle(g, i===0);
+    if(i>0) setGateStyle(g, false);
+  }
+  helipad={pos:new THREE.Vector3(px,ph+1.5,pz), r2:64};
+}
+/* --- Challenge: 低空穿桥 --- */
+function spawnLowGates(){
+  clearMissionObjects();
+  missionLimit=55;
+  altLimit=14; // fail if car y > ~14 (alt ~13m)
+  const path=[];
+  for(let i=0;i<10;i++){
+    const z=40 - i*22;
+    const x=(i%2===0?-1:1)*((i%4<2)?12:22);
+    path.push([x, 0.9, z]);
+  }
+  for(let i=0;i<path.length;i++){
+    const [x,y,z]=path[i];
+    let yaw=0;
+    if(i<path.length-1) yaw=Math.atan2(-(path[i+1][0]-x), -(path[i+1][2]-z));
+    const g=makeGate(x,y,z,yaw, 7.5, 3.6);
+    gates.push(g);
+    setGateStyle(g, i===0);
+    if(i>0) setGateStyle(g, false);
+  }
+}
+/* --- Challenge: 漂移绕桶 --- */
+function spawnCones(){
+  clearMissionObjects();
+  missionLimit=35;
+  // slalom cones along road z+, gates between pairs
+  const baseZ=45;
+  for(let i=0;i<9;i++){
+    const z=baseZ - i*14;
+    const side=(i%2===0)?1:-1;
+    makeCone(side*5.5, z);
+    makeCone(side*5.5+1.2, z+1.1);
+    const g=makeGate(side*2.2, 0.9, z, 0, 6.5, 3.8);
+    gates.push(g);
+    setGateStyle(g, i===0);
+    if(i>0) setGateStyle(g, false);
+  }
+}
+function failMission(reason){
+  if(missionDone||missionFailed) return;
+  missionFailed=true;
+  mTitle.textContent='失败';
+  mDesc.textContent=reason+' · 回菜单重试';
+  toast(reason, 2200);
+}
+function winTimed(key, title){
+  missionDone=true;
+  const sec=missionElapsed;
+  const pb=saveBest(key, sec);
+  mTitle.textContent='完成！';
+  mDesc.textContent=`${title} · ${sec.toFixed(1)}s`+(pb?' · 新纪录！':' · '+bestLabel(key));
+  toast(pb? '新纪录！'+sec.toFixed(1)+'s' : '挑战完成 '+sec.toFixed(1)+'s', 2400);
+  score+=Math.max(50, Math.floor((missionLimit-sec)*20));
+  elScore.textContent=score;
+}
+function updateGateProgress(hitR2=36){
+  const g=gates[ringIndex]; if(!g) return false;
+  if(car.position.distanceToSquared(g.pos)<hitR2){
+    g.passed=true; setGateStyle(g,false);
+    ringIndex++; score+=80; elScore.textContent=score;
+    if(ringIndex>=gates.length) return true;
+    setGateStyle(gates[ringIndex], true);
+    toast(`关卡 ${ringIndex}/${gates.length}`);
+    return false;
+  }
+  return false;
+}
 function updateMission(dt){
-  if(mode==='rings' && !missionDone){
+  if(missionDone||missionFailed) return;
+  if(missionLimit>0){
+    missionElapsed+=dt;
+    const left=Math.max(0, missionLimit-missionElapsed);
+    if(left<=0){ failMission('时间到'); return; }
+  }
+  if(mode==='rings'){
     const r=rings[ringIndex]; if(!r) return;
     if(car.position.distanceToSquared(r.pos)<42){
       score+=100; elScore.textContent=score; ringIndex++;
       if(ringIndex>=rings.length){
         missionDone=true;
-        const sec=((performance.now()-ringStartTime)/1000).toFixed(1);
-        mTitle.textContent='完成！'; mDesc.textContent=`全部环门通过 · ${sec}s · 得分 ${score}`;
+        const sec=((performance.now()-ringStartTime)/1000);
+        saveBest('rings', sec);
+        mTitle.textContent='完成！'; mDesc.textContent=`全部环门通过 · ${sec.toFixed(1)}s · 得分 ${score}`;
         toast('霓虹环竞速完成！');
       } else {
         highlightRing(ringIndex);
@@ -1404,7 +1649,7 @@ function updateMission(dt){
         toast(`通过环门 ${ringIndex}！`);
       }
     }
-  } else if(mode==='coins' && !missionDone){
+  } else if(mode==='coins'){
     for(const c of coins){
       if(c.taken) continue;
       if(car.position.distanceToSquared(c.mesh.position)<10){
@@ -1415,6 +1660,31 @@ function updateMission(dt){
       }
     }
     for(const c of coins) if(!c.taken) c.mesh.rotation.z+=dt*2;
+  } else if(mode==='sbend'){
+    const left=Math.max(0, missionLimit-missionElapsed);
+    mDesc.textContent=`倒计时 ${left.toFixed(1)}s · 弯门 ${ringIndex+1}/${gates.length} · ${bestLabel('sbend')}`;
+    if(updateGateProgress(32)) winTimed('sbend','十秒 S 弯');
+  } else if(mode==='rooftop'){
+    const left=Math.max(0, missionLimit-missionElapsed);
+    if(ringIndex<gates.length){
+      mDesc.textContent=`剩余 ${left.toFixed(0)}s · 路标 ${ringIndex+1}/${gates.length} · 飞向停机坪`;
+      updateGateProgress(40);
+    } else if(helipad){
+      mDesc.textContent=`剩余 ${left.toFixed(0)}s · 降落停机坪！ · ${bestLabel('rooftop')}`;
+      if(car.position.distanceToSquared(helipad.pos)<helipad.r2 && carState.y>helipad.pos.y-4){
+        winTimed('rooftop','限时穿城');
+      }
+    }
+  } else if(mode==='lowgate'){
+    if(carState.y > altLimit){ failMission('超高！保持低空'); return; }
+    const left=Math.max(0, missionLimit-missionElapsed);
+    const alt=Math.max(0, carState.y-0.95);
+    mDesc.textContent=`剩余 ${left.toFixed(0)}s · 门 ${ringIndex+1}/${gates.length} · 限高 ${altLimit-1}m（现 ${alt|0}m）`;
+    if(updateGateProgress(28)) winTimed('lowgate','低空穿桥');
+  } else if(mode==='cones'){
+    const left=Math.max(0, missionLimit-missionElapsed);
+    mDesc.textContent=`剩余 ${left.toFixed(0)}s · 绕桶 ${ringIndex+1}/${gates.length} · ${bestLabel('cones')}`;
+    if(updateGateProgress(26)) winTimed('cones','漂移绕桶');
   }
 }
 
@@ -1506,28 +1776,61 @@ let playing=false, paused=false, last=performance.now();
 let fpsFrames=0, fpsLast=performance.now();
 let hudAcc=0;
 
-function resetCar(){
-  Object.assign(carState,{x:0,y:0.95,z:24,yaw:0,speed:0,vert:0,flying:false,steer:0});
-  car.position.set(0,0.95,24); car.rotation.set(0,0,0);
-  camSmooth.set(0,9,40); lookSmooth.set(0,1,0); camera.position.copy(camSmooth);
+function resetCar(x=0,y=0.95,z=24,yaw=0){
+  Object.assign(carState,{x,y,z,yaw,speed:0,vert:0,flying:false,steer:0});
+  car.position.set(x,y,z); car.rotation.set(0,yaw,0);
+  const fx=-Math.sin(yaw), fz=-Math.cos(yaw);
+  camSmooth.set(x-fx*16, y+8, z-fz*16); lookSmooth.set(x,y+1,z); camera.position.copy(camSmooth);
 }
 function startMode(m){
-  mode=m; score=0; elScore.textContent='0'; missionDone=false;
+  mode=m; score=0; elScore.textContent='0'; missionDone=false; missionFailed=false;
   menuEl.classList.add('hidden');
   menuBtn.style.display='inline-block'; qualBtn.style.display='inline-block';
   playing=true; paused=false; pauseOverlay.classList.remove('show');
-  resetCar(); clearMissionObjects();
+  clearMissionObjects();
+  missionBox.style.display='block';
   if(m==='free'){
-    missionBox.style.display='block'; mTitle.textContent='自由驾驶 · Free Drive';
+    resetCar();
+    mTitle.textContent='自由驾驶 · Free Drive';
     mDesc.textContent='Central Park 起飞 · 空格飞行 · 撞楼弹开'; toast('自由驾驶 · Central Park');
   } else if(m==='rings'){
+    resetCar();
     spawnRings(); ringStartTime=performance.now();
-    missionBox.style.display='block'; mTitle.textContent='霓虹环竞速';
+    mTitle.textContent='霓虹环竞速';
     mDesc.textContent=`环门 1 / ${rings.length}`; toast('穿过发光环门！');
-  } else {
+  } else if(m==='coins'){
+    resetCar();
     spawnCoins();
-    missionBox.style.display='block'; mTitle.textContent='金币寻宝';
+    mTitle.textContent='金币寻宝';
     mDesc.textContent=`剩余金币 ${coins.length}`; toast('收集漂浮金币！');
+  } else if(m==='sbend'){
+    spawnSBend();
+    resetCar(0,0.95,58,0); // face -Z into S-curve
+    mTitle.textContent='十秒 S 弯 · 10s S-Curve';
+    mDesc.textContent=`倒计时 10.0s · 弯门 1/${gates.length} · ${bestLabel('sbend')}`;
+    toast('10 秒内穿过全部 S 弯门！', 2200);
+  } else if(m==='rooftop'){
+    spawnRooftop();
+    resetCar(0,0.95,30, Math.PI*0.25);
+    mTitle.textContent='限时穿城 · Rooftop Rush';
+    mDesc.textContent=`剩余 40s · 飞向东北停机坪 · ${bestLabel('rooftop')}`;
+    toast('40 秒内飞到屋顶停机坪！', 2200);
+  } else if(m==='lowgate'){
+    spawnLowGates();
+    resetCar(0,0.95,52,0);
+    mTitle.textContent='低空穿桥 · Low Gates';
+    mDesc.textContent=`剩余 55s · 门 1/${gates.length} · 限高 ${altLimit-1}m`;
+    toast('保持低空，依次穿门！', 2200);
+  } else if(m==='cones'){
+    spawnCones();
+    resetCar(0,0.95,58,0);
+    mTitle.textContent='漂移绕桶 · Cone Slalom';
+    mDesc.textContent=`剩余 35s · 绕桶 1/${gates.length} · ${bestLabel('cones')}`;
+    toast('左右绕桶，别撞飞！', 2200);
+  } else {
+    resetCar();
+    mTitle.textContent='自由驾驶';
+    mDesc.textContent='—';
   }
 }
 function backToMenu(){
@@ -1675,7 +1978,8 @@ async function loadGameAssets(){
   }
   try{
     const q=new URLSearchParams(location.search).get('mode');
-    if(q==='free'||q==='rings'||q==='coins') setTimeout(()=>startMode(q),150);
+    const ok=['free','rings','coins','sbend','rooftop','lowgate','cones'];
+    if(ok.includes(q)) setTimeout(()=>startMode(q),150);
   }catch(e){}
 })();
 requestAnimationFrame(tick);
