@@ -121,7 +121,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#05070c;font-family:
       </div>
       <div class="modes">
         <div class="section">Circuit Racing</div>
-        <button type="button" class="primary" data-mode="track">Solo Circuit · 3 Laps<span>City loop · countdown start · finish timing · local records</span></button>
+        <button type="button" class="primary" data-mode="track">Solo Circuit · 3 Laps<span>Winding circuit · countdown start · finish timing · local records</span></button>
         <button type="button" class="primary" data-mode="timeattack">Time Trial · 1 Lap<span>Best single lap · beat your record</span></button>
         <button type="button" class="primary" data-mode="target">Race Challenge · Target Time<span>Finish 3 laps under the target (based on your best)</span></button>
         <div class="section">Other</div>
@@ -260,76 +260,58 @@ const SIDE_ROAD = 16;
 const SIDEWALK = 4.5;
 
 /* Race track centerline — used to keep buildings/props off asphalt */
-/* QQ Speed pretzel / figure-8 circuit (~4.3km):
-   RIGHT lobe → CENTER CROSS → LEFT lobe → CROSS again →
-   NE hairpin → SOUTH nested hairpin lobe → back to start.
-   Silhouette is ∞ + southern knot (self-crossing), not an oval. */
+/* QQ Speed-style winding circuit (~3.7km), NO self-intersections:
+   South long straight → SE sweep → east S + inward waist → north big S-bends →
+   NW hairpin → west S-descent → SW hairpin → start.
+   Kidney silhouette; parallel corridors stay ≥2× track-width apart. */
 const TRACK_CTRL = [
-  // START — south long straight (westbound), clear of the ∞ cross
-  [150, -430],
-  [60, -450],
-  [-30, -440],
-  [-110, -400],
-  [-160, -340],
-  [-140, -270],
-  [-70, -230],
-  // Weave north toward start-of-∞ (will cross south dive later)
-  [10, -180],
-  [50, -120],
-  [40, -70],
-  [20, -40],
-  // Into RIGHT lobe of ∞ (NE)
-  [70, 20],
-  [130, 90],
-  [200, 150],
-  [280, 180],
-  [350, 150],
-  [390, 80],
-  [395, 0],
-  [370, -80],
-  [310, -140],
-  [220, -160],
-  [140, -130],
-  [80, -70],
-  // CENTER CROSS #1 — heading NW through the knot
-  [30, -10],
-  [-20, 50],
-  [-70, 110],
-  // LEFT lobe (west) CCW
-  [-130, 170],
-  [-210, 210],
-  [-300, 200],
-  [-360, 140],
-  [-390, 50],
-  [-385, -40],
-  [-340, -120],
-  [-260, -160],
-  [-170, -150],
-  [-90, -100],
-  // CENTER CROSS #1 again — heading SE (intersects NW pass = figure-8)
-  [-30, -30],
-  [30, 40],
-  [90, 100],
-  // NE spur hairpin then dive south
-  [160, 160],
-  [220, 200],
-  [280, 190],
-  [310, 130],
-  [290, 60],
-  [240, 10],
-  [170, -20],
-  [100, -60],
-  [40, -120],
-  [-20, -180],
-  // SOUTH nested pretzel lobe (tight hairpins)
-  [30, -240],
-  [110, -280],
-  [180, -320],
-  [200, -380]
-  // closes back to START [150,-430]
+  // START — south long straight eastbound
+  [-30, -510],
+  [90, -515],
+  [220, -510],
+  [350, -485],
+  // SE sweeping corner into east climb
+  [450, -430],
+  [510, -340],
+  [530, -230],
+  // East climb with S + inward waist (kidney dent)
+  [515, -120],
+  [545, -20],
+  [480, 60],
+  [520, 150],
+  [490, 240],
+  // NE corner into north S-bends
+  [430, 310],
+  [340, 350],
+  // North big S-bends heading west
+  [250, 320],
+  [160, 390],
+  [60, 310],
+  [-40, 400],
+  [-140, 315],
+  [-230, 395],
+  [-320, 340],
+  // NW hairpin (tight 180 → south)
+  [-400, 360],
+  [-470, 310],
+  [-520, 230],
+  [-540, 130],
+  [-525, 30],
+  [-480, -50],
+  // West descending S
+  [-520, -140],
+  [-470, -230],
+  [-525, -320],
+  [-480, -400],
+  // SW hairpin turning east to start
+  [-430, -460],
+  [-340, -505],
+  [-220, -520],
+  [-120, -515]
+  // closes to [-30,-510]
 ];
 const TRACK_HALF_W = 11;
-/* Corridor clear for dense pretzel ribbon (crossings + hairpins) */
+/* Corridor clear for winding ribbon (no crossings; keep buildings off asphalt) */
 const TRACK_CLEAR_BUILDING = 70;
 const TRACK_CLEAR_PROP = 48;
 const TRACK_CLEAR_M = TRACK_CLEAR_BUILDING;
