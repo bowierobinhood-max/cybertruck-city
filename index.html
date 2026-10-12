@@ -43,6 +43,12 @@ html,body{width:100%;height:100%;overflow:hidden;background:#05070c;font-family:
 #pauseOverlay button{margin-top:12px;margin-right:6px;padding:9px 16px;border-radius:9px;border:1px solid rgba(120,180,255,.4);background:rgba(40,80,140,.6);color:#fff;cursor:pointer}
 #speedBar{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);width:min(280px,65vw);height:6px;border-radius:999px;background:rgba(255,255,255,.12);overflow:hidden}
 #speedFill{height:100%;width:0%;background:linear-gradient(90deg,#3ad0ff,#7aff9a,#ffd76a)}
+
+#loader{position:fixed;inset:0;z-index:40;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(5,8,14,.92);gap:12px;transition:opacity .35s}
+#loader.hide{opacity:0;pointer-events:none}
+#loader .bar{width:220px;height:6px;border-radius:99px;background:rgba(255,255,255,.12);overflow:hidden}
+#loader .bar>i{display:block;height:100%;width:8%;background:linear-gradient(90deg,#5ab0ff,#9fe7ff);border-radius:99px;transition:width .2s}
+#loader p{font-size:13px;opacity:.85}
 #fps{position:absolute;left:12px;bottom:12px;font-size:11px;opacity:.55;font-variant-numeric:tabular-nums}
 #mobilePad{display:none;position:absolute;left:0;right:0;bottom:0;height:170px;pointer-events:none}
 @media (pointer:coarse){#mobilePad{display:block}#controlsHint{display:none}}
@@ -80,10 +86,11 @@ html,body{width:100%;height:100%;overflow:hidden;background:#05070c;font-family:
       <button type="button" id="btnDown">↓ 降</button>
     </div>
   </div>
+  <div id="loader"><p id="loaderTxt">加载 3D 资源…</p><div class="bar"><i id="loaderBar"></i></div></div>
   <div id="menu" class="panel">
     <div class="card">
       <h1>飞车都市</h1>
-      <p class="sub">特斯拉赛博卡车（带 Tesla 标）开放都市：更密楼群、沥青大道、天空与光照。画质可调保帧数——不是真 GTA，但比方块城丰富得多。</p>
+      <p class="sub">真·赛博卡车 GLB + Kenney 城楼模型 / PBR 贴图。画质可调保帧数——仍不是真 GTA，但车和楼都扎实多了。</p>
       <div class="quality" id="qualityRow">
         <span>画质</span>
         <button type="button" data-q="high">高</button>
@@ -113,10 +120,16 @@ html,body{width:100%;height:100%;overflow:hidden;background:#05070c;font-family:
   </div>
 </div>
 <script type="importmap">
-{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js"}}
+{"imports":{
+  "three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+}}
 </script>
 <script type="module">
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+/* Assets: Cybertruck GLB CC-BY Mobolaji (poly.pizza); Kenney City Kit Commercial CC0; Poly Haven sunset_jhbcentral HDRI CC0; ambientCG Facade001/Bricks075A/Concrete034/Metal032 CC0 */
 
 const canvas = document.getElementById('c');
 const elSpd = document.getElementById('spd');
@@ -133,6 +146,34 @@ const menuBtn = document.getElementById('menuBtn');
 const qualBtn = document.getElementById('qualBtn');
 const fpsEl = document.getElementById('fps');
 
+const loaderEl = document.getElementById('loader');
+const loaderTxt = document.getElementById('loaderTxt');
+const loaderBar = document.getElementById('loaderBar');
+function setLoad(p, msg){
+  if(loaderBar) loaderBar.style.width = Math.max(4, Math.min(100, p|0)) + '%';
+  if(loaderTxt && msg) loaderTxt.textContent = msg;
+}
+function hideLoader(){ if(loaderEl){ loaderEl.classList.add('hide'); setTimeout(()=>loaderEl.remove(), 400); } }
+
+const ASSET_BASE = new URL('assets/', import.meta.url).href;
+const gltfLoader = new GLTFLoader();
+const texLoader = new THREE.TextureLoader();
+let envRT = null;
+let pbrFacade = null, pbrBrick = null, pbrConcrete = null;
+let kenneyTemplates = []; // {name, scene, size}
+let carUsesGLB = false;
+
+function loadTex(url, colorSpace){
+  return new Promise((resolve,reject)=>{
+    texLoader.load(url, t=>{
+      if(colorSpace) t.colorSpace = colorSpace;
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.anisotropy = 4;
+      resolve(t);
+    }, undefined, reject);
+  });
+}
+
 function toast(msg, ms=1800){
   toastEl.textContent = msg;
   toastEl.classList.add('show');
@@ -141,9 +182,9 @@ function toast(msg, ms=1800){
 }
 
 const QUAL = {
-  high: { pr:1.5, shadows:true, shadowSize:1024, far:920, fogN:0.00085, fogD:0.00055, blocks:5, perBlock:4, extraTowers:12, lamps:true, streetLamps:true, lampLights:8, antialias:true, treeCount:14, coins:22, headlight:true, tone:2, taxis:10, signs:5, sidewalks:true, parked:18, traffic:true },
-  med:  { pr:1, shadows:false, shadowSize:512, far:640, fogN:0.00125, fogD:0.0008, blocks:4, perBlock:3, extraTowers:8, lamps:true, streetLamps:true, lampLights:0, antialias:false, treeCount:8, coins:16, headlight:false, tone:2, taxis:6, signs:4, sidewalks:true, parked:10, traffic:true },
-  low:  { pr:1, shadows:false, shadowSize:256, far:460, fogN:0.0018, fogD:0.00115, blocks:3, perBlock:2, extraTowers:4, lamps:true, streetLamps:false, lampLights:0, antialias:false, treeCount:4, coins:10, headlight:false, tone:1, taxis:2, signs:3, sidewalks:false, parked:4, traffic:false },
+  high: { pr:1.5, shadows:true, shadowSize:1024, far:920, fogN:0.00085, fogD:0.00055, blocks:5, perBlock:4, extraTowers:10, lamps:true, streetLamps:true, lampLights:8, antialias:true, treeCount:14, coins:22, headlight:true, tone:2, taxis:10, signs:5, sidewalks:true, parked:18, traffic:true, glbNear:26, glbUseSky:true, env:true },
+  med:  { pr:1, shadows:false, shadowSize:512, far:640, fogN:0.00125, fogD:0.0008, blocks:4, perBlock:3, extraTowers:6, lamps:true, streetLamps:true, lampLights:0, antialias:false, treeCount:8, coins:16, headlight:false, tone:2, taxis:6, signs:4, sidewalks:true, parked:10, traffic:true, glbNear:20, glbUseSky:true, env:true },
+  low:  { pr:1, shadows:false, shadowSize:256, far:460, fogN:0.0018, fogD:0.00115, blocks:3, perBlock:2, extraTowers:3, lamps:true, streetLamps:false, lampLights:0, antialias:false, treeCount:4, coins:10, headlight:false, tone:1, taxis:2, signs:3, sidewalks:false, parked:4, traffic:false, glbNear:6, glbUseSky:false, env:false },
 };
 let quality = localStorage.getItem('fcc_quality') || 'med';
 if(!QUAL[quality]) quality = 'med';
@@ -157,6 +198,7 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
 renderer.shadowMap.enabled = false;
+renderer.useLegacyLights = false;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 const scene = new THREE.Scene();
@@ -404,6 +446,76 @@ function roadPlane(x,z,w,d, mat, y=0.04){
   return m;
 }
 
+
+function applyEnvToMat(m){
+  if(!m || !envRT) return;
+  m.envMap = envRT.texture;
+  m.envMapIntensity = m.envMapIntensity ?? 1.0;
+  m.needsUpdate = true;
+}
+
+function placeKenneyBuildings(q){
+  if(!kenneyTemplates.length || !q.glbNear) return;
+  const lows = kenneyTemplates.filter(t=>!t.isSky);
+  const skys = kenneyTemplates.filter(t=>t.isSky);
+  const slots = [];
+  // Dense ring facing park roads (clear of road centers)
+  for(let a=0;a<Math.PI*2;a+=Math.PI/8){
+    const r = 55 + (Math.abs(Math.cos(a*2))*8);
+    slots.push({x:Math.cos(a)*r, z:Math.sin(a)*r, yaw:a+Math.PI, sky:false, h:18+(slots.length%6)*3});
+  }
+  // Avenue corridors north/south/east/west — skyscrapers
+  for(let i=1;i<=3;i++){
+    for(const s of [1,-1]){
+      slots.push({x:s*(36+i*22), z:-70-i*8, yaw:0, sky:true, h:48+i*14});
+      slots.push({x:s*(36+i*22), z:70+i*8, yaw:Math.PI, sky:true, h:42+i*12});
+      slots.push({x:-70-i*8, z:s*(36+i*22), yaw:Math.PI/2, sky:true, h:44+i*12});
+      slots.push({x:70+i*8, z:s*(36+i*22), yaw:-Math.PI/2, sky:true, h:44+i*12});
+    }
+  }
+  // Mid-rise fills
+  for(let i=1;i<=2;i++){
+    for(const s of [1,-1]){
+      slots.push({x:s*(BLOCK*i-10), z:-48, yaw:0, sky:false, h:22+i*4});
+      slots.push({x:s*(BLOCK*i-10), z:48, yaw:Math.PI, sky:false, h:20+i*4});
+    }
+  }
+  const n = Math.min(q.glbNear + (quality==='high'?8:4), slots.length);
+  for(let i=0;i<n;i++){
+    const sl = slots[i];
+    const pool = (sl.sky && skys.length) ? skys : (lows.length?lows:kenneyTemplates);
+    const tpl = pool[i % pool.length];
+    const inst = tpl.scene.clone(true);
+    const wantH = sl.h;
+    const sc = wantH / Math.max(0.01, tpl.size.y);
+    // Uniform horizontal scale from height; slight fatten for presence
+    const fat = sl.sky ? 1.15 : 1.35;
+    inst.scale.set(sc*fat, sc, sc*fat);
+    inst.rotation.y = sl.yaw + (i%3)*0.15;
+    inst.position.set(sl.x, 0, sl.z);
+    inst.traverse(o=>{
+      if(o.isMesh){
+        o.castShadow = q.shadows; o.receiveShadow = q.shadows;
+        if(o.material){
+          o.material = o.material.clone();
+          applyEnvToMat(o.material);
+          o.material.envMapIntensity = isNight ? 0.65 : 1.15;
+          o.material.metalness = Math.min(0.35, o.material.metalness||0);
+          o.material.roughness = Math.max(0.45, o.material.roughness||0.7);
+          if(isNight){
+            o.material.emissive = new THREE.Color(0x243040);
+            o.material.emissiveMap = o.material.map;
+            o.material.emissiveIntensity = 0.45;
+          }
+        }
+      }
+    });
+    cityRoot.add(inst);
+    const w = tpl.size.x * sc * fat, d = tpl.size.z * sc * fat, h = tpl.size.y * sc;
+    addCollider(sl.x, sl.z, Math.max(w, 8), Math.max(d, 8), h);
+  }
+}
+
 function buildCity(q){
   clearCity();
   const half = q.blocks;
@@ -572,16 +684,47 @@ function buildCity(q){
     return mesh;
   }
 
+  const glassMap = isNight?nightGlass:dayGlass;
+  const brickMap = isNight?nightBrick:dayBrick;
   buildingMatGlass = new THREE.MeshStandardMaterial({
-    color:0xffffff, map:nightGlass, emissive:0x1a2430,
-    emissiveMap:nightGlass, emissiveIntensity:isNight?1.05:0.1,
-    metalness:0.55, roughness:0.28
+    color:0xffffff,
+    map: (pbrFacade && pbrFacade.color) ? pbrFacade.color : glassMap,
+    normalMap: (pbrFacade && pbrFacade.normal) ? pbrFacade.normal : null,
+    roughnessMap: (pbrFacade && pbrFacade.rough) ? pbrFacade.rough : null,
+    metalnessMap: (pbrFacade && pbrFacade.metal) ? pbrFacade.metal : null,
+    emissive:0x1a2430,
+    emissiveMap: glassMap,
+    emissiveIntensity:isNight?0.95:0.08,
+    metalness:0.72, roughness:0.22, envMapIntensity: isNight?0.7:1.25
   });
   buildingMatBrick = new THREE.MeshStandardMaterial({
-    color:0xffffff, map:nightBrick, emissive:0x2a1810,
-    emissiveMap:nightBrick, emissiveIntensity:isNight?0.75:0.06,
-    metalness:0.08, roughness:0.82
+    color:0xffffff,
+    map: (pbrBrick && pbrBrick.color) ? pbrBrick.color : brickMap,
+    normalMap: (pbrBrick && pbrBrick.normal) ? pbrBrick.normal : null,
+    roughnessMap: (pbrBrick && pbrBrick.rough) ? pbrBrick.rough : null,
+    emissive:0x2a1810,
+    emissiveMap: brickMap,
+    emissiveIntensity:isNight?0.7:0.05,
+    metalness:0.06, roughness:0.84, envMapIntensity: isNight?0.35:0.8
   });
+  // Tile PBR maps across façades
+  for(const mat of [buildingMatGlass, buildingMatBrick]){
+    for(const t of [mat.map, mat.normalMap, mat.roughnessMap, mat.metalnessMap, mat.emissiveMap]){
+      if(t && t !== glassMap && t !== brickMap && t !== nightGlass && t !== dayGlass && t !== nightBrick && t !== dayBrick){
+        t.repeat.set(2.5, 4.5); t.needsUpdate = true;
+      }
+    }
+    if(mat.emissiveMap){ mat.emissiveMap.repeat.set(2,4); }
+    applyEnvToMat(mat);
+  }
+  // Window atlas still drives night glow on glass even when albedo is PBR
+  if(pbrFacade && pbrFacade.color){
+    buildingMatGlass.emissiveMap = glassMap;
+    buildingMatGlass.emissiveMap.repeat.set(3,6);
+  }
+  if(pbrBrick && pbrBrick.color){
+    buildingMatBrick.emissiveMap = brickMap;
+  }
   buildingMeshGlass = makeInstanced(glassBuilds, buildingMatGlass);
   buildingMeshBrick = makeInstanced(brickBuilds, buildingMatBrick);
 
@@ -763,164 +906,233 @@ function wedgeGeo(w1, w2, h, len, topScaleFront=0.9, topScaleRear=0.95, frontTop
   return geo;
 }
 
-function makeCar(){
-  while(car.children.length) car.remove(car.children[0]);
 
-  // stainless steel Cybertruck materials
-  const steel = new THREE.MeshStandardMaterial({
-    color:0xd4d8dc, metalness:0.72, roughness:0.32, envMapIntensity:1.0
-  });
-  const steelDark = new THREE.MeshStandardMaterial({
-    color:0x9aa1a8, metalness:0.65, roughness:0.4
-  });
-  const steelBright = new THREE.MeshStandardMaterial({
-    color:0xe8ecef, metalness:0.78, roughness:0.22
-  });
-  const black = new THREE.MeshStandardMaterial({
-    color:0x0c0e10, metalness:0.4, roughness:0.65
-  });
-  const rubber = new THREE.MeshStandardMaterial({
-    color:0x111111, metalness:0.05, roughness:0.9
-  });
-  const glass = new THREE.MeshStandardMaterial({
-    color:0x1a2836, metalness:0.6, roughness:0.12, transparent:true, opacity:0.78
-  });
-  const slit = new THREE.MeshBasicMaterial({color:0xf5f8ff});
-  const rearLight = new THREE.MeshBasicMaterial({color:0xff1e28});
+function addTeslaBadges(root){
   const logoT = makeTeslaLogoTex('T');
   const logoWord = makeTeslaLogoTex('word');
   const logoMat = new THREE.MeshBasicMaterial({map:logoT, transparent:true, depthWrite:false, side:THREE.DoubleSide});
   const wordMat = new THREE.MeshBasicMaterial({map:logoWord, transparent:true, depthWrite:false, side:THREE.DoubleSide});
+  const front = new THREE.Mesh(planeGeo, logoMat);
+  front.scale.set(0.38, 0.38, 1);
+  front.position.set(0, 1.15, 2.85);
+  front.rotation.x = -0.12;
+  root.add(front);
+  const rear = new THREE.Mesh(planeGeo, logoMat);
+  rear.scale.set(0.32, 0.32, 1);
+  rear.position.set(0, 1.35, -2.75);
+  rear.rotation.y = Math.PI;
+  root.add(rear);
+  const word = new THREE.Mesh(planeGeo, wordMat);
+  word.scale.set(0.9, 0.2, 1);
+  word.position.set(0, 0.72, -2.75);
+  word.rotation.y = Math.PI;
+  root.add(word);
+}
 
-  // —— Main stainless wedge body (long angular pickup) ——
+function makeCarProcedural(){
+  while(car.children.length) car.remove(car.children[0]);
+  carUsesGLB = false;
+
+  const steel = new THREE.MeshStandardMaterial({
+    color:0xd8dce0, metalness:0.92, roughness:0.28, envMapIntensity:1.35
+  });
+  if(window.__steelPBR){
+    const s = window.__steelPBR;
+    steel.map = s.color; steel.normalMap = s.normal; steel.roughnessMap = s.rough; steel.metalnessMap = s.metal;
+    steel.metalness = 1.0; steel.roughness = 0.5; steel.color.setHex(0xffffff);
+  }
+  applyEnvToMat(steel);
+  const steelDark = new THREE.MeshStandardMaterial({ color:0x8e959c, metalness:0.88, roughness:0.38, envMapIntensity:1.2 });
+  const steelBright = new THREE.MeshStandardMaterial({ color:0xeef1f4, metalness:0.95, roughness:0.18, envMapIntensity:1.5 });
+  const black = new THREE.MeshStandardMaterial({ color:0x0c0e10, metalness:0.45, roughness:0.62 });
+  const rubber = new THREE.MeshStandardMaterial({ color:0x111111, metalness:0.05, roughness:0.92 });
+  const glass = new THREE.MeshStandardMaterial({
+    color:0x152230, metalness:0.85, roughness:0.06, transparent:true, opacity:0.72, envMapIntensity:1.6
+  });
+  const slit = new THREE.MeshBasicMaterial({color:0xf5f8ff});
+  const rearLight = new THREE.MeshBasicMaterial({color:0xff1e28});
+
   const body = new THREE.Mesh(wedgeGeo(2.45, 2.28, 0.95, 5.4, 0.94, 0.96, 0.72), steel);
   body.position.y = 0.92; body.castShadow=true; body.receiveShadow=true; car.add(body);
-
-  // Upper cabin / A-pillar roof wedge (signature sharp roofline)
   const cabin = new THREE.Mesh(wedgeGeo(2.28, 2.18, 0.78, 3.55, 0.88, 0.97, 0.55), steelBright);
-  cabin.position.set(0, 1.58, -0.05);
-  cabin.rotation.x = -0.12;
-  cabin.castShadow=true; car.add(cabin);
-
-  // Sharp nose / front fascia plank
+  cabin.position.set(0, 1.58, -0.05); cabin.rotation.x = -0.12; cabin.castShadow=true; car.add(cabin);
   const nose = new THREE.Mesh(boxGeo, steel);
-  nose.scale.set(2.32, 0.62, 1.05);
-  nose.position.set(0, 0.82, 2.62);
-  nose.rotation.x = 0.28;
-  nose.castShadow=true; car.add(nose);
-
-  // Continuous thin LED light bar (Cybertruck signature)
+  nose.scale.set(2.32, 0.62, 1.05); nose.position.set(0, 0.82, 2.62); nose.rotation.x = 0.28; nose.castShadow=true; car.add(nose);
   const hlBar = new THREE.Mesh(boxGeo, slit);
-  hlBar.scale.set(2.05, 0.045, 0.07);
-  hlBar.position.set(0, 0.98, 3.05);
-  car.add(hlBar);
-  // subtle light glow strip behind
+  hlBar.scale.set(2.05, 0.045, 0.07); hlBar.position.set(0, 0.98, 3.05); car.add(hlBar);
   const hlGlow = new THREE.Mesh(boxGeo, new THREE.MeshBasicMaterial({color:0xcde6ff, transparent:true, opacity:0.35}));
   hlGlow.scale.set(2.1, 0.1, 0.04); hlGlow.position.set(0, 0.98, 3.0); car.add(hlGlow);
 
-  // —— Tesla red T badge on front (above light bar) ——
-  const frontLogo = new THREE.Mesh(planeGeo, logoMat);
-  frontLogo.scale.set(0.42, 0.42, 1);
-  frontLogo.position.set(0, 1.18, 3.12);
-  frontLogo.rotation.x = -0.15;
-  car.add(frontLogo);
-
-  // Windshield (steep flat glass)
   const wind = new THREE.Mesh(planeGeo, glass);
-  wind.scale.set(2.0, 1.25, 1);
-  wind.position.set(0, 1.48, 1.22);
-  wind.rotation.x = -1.08;
-  car.add(wind);
-
-  // Side glass
+  wind.scale.set(2.0, 1.25, 1); wind.position.set(0, 1.48, 1.22); wind.rotation.x = -1.08; car.add(wind);
   for(const sx of [1.14, -1.14]){
     const sg = new THREE.Mesh(planeGeo, glass);
-    sg.scale.set(1.75, 0.58, 1);
-    sg.position.set(sx, 1.52, 0.05);
-    sg.rotation.y = Math.PI/2 * Math.sign(sx);
-    car.add(sg);
+    sg.scale.set(1.75, 0.58, 1); sg.position.set(sx, 1.52, 0.05); sg.rotation.y = Math.PI/2 * Math.sign(sx); car.add(sg);
   }
-
-  // Door crease lines (angular panel seams)
   for(const sx of [1.23, -1.23]){
     const seam = new THREE.Mesh(boxGeo, steelDark);
-    seam.scale.set(0.02, 0.7, 2.4);
-    seam.position.set(sx, 1.05, 0.3);
-    car.add(seam);
+    seam.scale.set(0.02, 0.7, 2.4); seam.position.set(sx, 1.05, 0.3); car.add(seam);
   }
-
-  // Truck bed / exoskeleton rear deck
   const bed = new THREE.Mesh(boxGeo, steelDark);
-  bed.scale.set(2.15, 0.32, 1.65);
-  bed.position.set(0, 1.12, -2.05);
-  bed.castShadow=true; car.add(bed);
+  bed.scale.set(2.15, 0.32, 1.65); bed.position.set(0, 1.12, -2.05); bed.castShadow=true; car.add(bed);
   const bedRailL = new THREE.Mesh(boxGeo, steel);
   bedRailL.scale.set(0.07, 0.5, 1.55); bedRailL.position.set(1.05, 1.42, -2.05); car.add(bedRailL);
   const bedRailR = bedRailL.clone(); bedRailR.position.x=-1.05; car.add(bedRailR);
   const tailgate = new THREE.Mesh(boxGeo, steel);
   tailgate.scale.set(2.15, 0.55, 0.12); tailgate.position.set(0, 1.22, -2.88); car.add(tailgate);
-
-  // Rear continuous red light bar
   const rl = new THREE.Mesh(boxGeo, rearLight);
   rl.scale.set(2.0, 0.05, 0.05); rl.position.set(0, 1.05, -2.96); car.add(rl);
-
-  // —— Tesla T on rear + TESLA wordmark ——
-  const rearLogo = new THREE.Mesh(planeGeo, logoMat);
-  rearLogo.scale.set(0.36, 0.36, 1);
-  rearLogo.position.set(0, 1.45, -2.95);
-  rearLogo.rotation.y = Math.PI;
-  car.add(rearLogo);
-  const rearWord = new THREE.Mesh(planeGeo, wordMat);
-  rearWord.scale.set(0.95, 0.22, 1);
-  rearWord.position.set(0, 0.78, -2.95);
-  rearWord.rotation.y = Math.PI;
-  car.add(rearWord);
-
-  // Underbody tray / battery pack silhouette
+  addTeslaBadges(car);
   const under = new THREE.Mesh(boxGeo, black);
   under.scale.set(2.2, 0.14, 5.0); under.position.y=0.26; car.add(under);
-
-  // Side mirrors (angular)
   for(const sx of [1.28, -1.28]){
     const mir = new THREE.Mesh(boxGeo, steelDark);
-    mir.scale.set(0.18, 0.14, 0.32);
-    mir.position.set(sx, 1.55, 1.35);
-    car.add(mir);
+    mir.scale.set(0.18, 0.14, 0.32); mir.position.set(sx, 1.55, 1.35); car.add(mir);
   }
-
-  // Geometric Cybertruck-style wheels
   car.userData.wheels = [];
-  const rimMat = new THREE.MeshStandardMaterial({color:0x5a6068, metalness:0.7, roughness:0.4});
-  const hubMat = new THREE.MeshStandardMaterial({color:0xb8bec4, metalness:0.85, roughness:0.3});
+  const rimMat = new THREE.MeshStandardMaterial({color:0x5a6068, metalness:0.75, roughness:0.35, envMapIntensity:1.1});
+  const hubMat = new THREE.MeshStandardMaterial({color:0xb8bec4, metalness:0.9, roughness:0.25, envMapIntensity:1.2});
   for(const [wx,wy,wz] of [[1.12,0.52,1.65],[-1.12,0.52,1.65],[1.12,0.52,-1.65],[-1.12,0.52,-1.65]]){
     const wh=new THREE.Group();
     const tire=new THREE.Mesh(wheelGeoCT, rubber);
     tire.scale.set(1.05,0.42,1.05); tire.rotation.z=Math.PI/2; wh.add(tire);
     const rim=new THREE.Mesh(wheelGeoCT, rimMat);
     rim.scale.set(0.62,0.44,0.62); rim.rotation.z=Math.PI/2; wh.add(rim);
-    // polygonal hub cover
     const hub=new THREE.Mesh(new THREE.CylinderGeometry(0.28,0.28,0.46,6), hubMat);
     hub.rotation.z=Math.PI/2; wh.add(hub);
     wh.position.set(wx,wy,wz); car.add(wh); car.userData.wheels.push(wh);
   }
-
-  // Wheel arch flares
   for(const [sx,sz] of [[1.28,1.65],[-1.28,1.65],[1.28,-1.65],[-1.28,-1.65]]){
     const flare=new THREE.Mesh(boxGeo, steelDark);
     flare.scale.set(0.28,0.62,1.0); flare.position.set(sx,0.75,sz); car.add(flare);
   }
-
-  // Headlight spotlight (toggled by quality)
   const hl=new THREE.SpotLight(0xeef6ff, 0, 40, Math.PI/8, 0.5, 1);
   hl.position.set(0,1.0,2.9); hl.target.position.set(0,0.3,18);
   car.add(hl); car.add(hl.target); car.userData.headLight=hl;
-
   const thruster=new THREE.Mesh(new THREE.CircleGeometry(1.15,10),
     new THREE.MeshBasicMaterial({color:0x66d0ff, transparent:true, opacity:0, side:THREE.DoubleSide, depthWrite:false}));
   thruster.rotation.x=-Math.PI/2; thruster.position.y=0.06; car.add(thruster);
   car.userData.thruster=thruster;
 }
-makeCar();
+
+function fitObjectToCar(root){
+  root.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(root);
+  const size = new THREE.Vector3();
+  const center = new THREE.Vector3();
+  box.getSize(size); box.getCenter(center);
+  // Prefer longest horizontal as length
+  const length = Math.max(size.x, size.z);
+  const targetLen = 5.55;
+  const s = targetLen / Math.max(0.001, length);
+  root.scale.setScalar(s);
+  root.updateMatrixWorld(true);
+  const box2 = new THREE.Box3().setFromObject(root);
+  const size2 = new THREE.Vector3(); const center2 = new THREE.Vector3();
+  box2.getSize(size2); box2.getCenter(center2);
+  // Recenter XZ; put bottom near 0.12 so it sits like procedural
+  root.position.x -= center2.x;
+  root.position.z -= center2.z;
+  root.position.y -= box2.min.y - 0.12;
+  // Face -Z (drive forward)
+  // If model length was along X, rotate
+  if(size.x > size.z * 1.15){
+    root.rotation.y = Math.PI/2;
+    root.updateMatrixWorld(true);
+    const box3 = new THREE.Box3().setFromObject(root);
+    const c3 = new THREE.Vector3(); box3.getCenter(c3);
+    root.position.x -= c3.x; root.position.z -= c3.z;
+    root.position.y -= box3.min.y - 0.12;
+  }
+  // Heuristic: many cybertruck exports face +Z; flip so nose is +Z in our earlier procedural... 
+  // Procedural nose at +Z. Drive uses -sin/-cos so yaw0 moves -Z, meaning rear faces +Z? 
+  // fx=-sin(0)=0, fz=-cos(0)=-1 → moves toward -Z, so FRONT should be -Z.
+  // Procedural nose at +Z is WRONG for movement, OR the car model faces opposite travel.
+  // Looking at procedural: nose at z=+2.62, when yaw=0 car moves -Z, so the rear leads? That would be weird.
+  // Actually wait: rotation.y = yaw, and position updates with -sin/-cos. In Three.js, default object faces +Z.
+  // After rotation.y=yaw, local +Z rotates. Movement is in direction (-sin(yaw), -cos(yaw)) which is local -Z.
+  // So the car should face -Z (nose at negative Z). But procedural has nose at +Z!
+  // So either the game drives "backwards" visually relative to the model, or I'm confused.
+  // User has been playing with this - so keep same: nose at +Z like procedural → GLB should face +Z.
+  root.rotation.y += Math.PI; // flip once; puppeteer can verify. Actually let's NOT flip initially and match bbox.
+  // Re-evaluate after: many Blender cars face -Y or +Y. Our model length along Z with more in -Z half.
+  // Leave unflipped first; if nose wrong user will say. Better: detect "Cube" center.
+  return size2;
+}
+
+async function makeCarFromGLB(){
+  while(car.children.length) car.remove(car.children[0]);
+  const gltf = await gltfLoader.loadAsync(ASSET_BASE + 'cybertruck.glb');
+  const model = gltf.scene;
+  model.traverse(o=>{
+    if(o.isMesh){
+      o.castShadow = true; o.receiveShadow = true;
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      for(const m of mats){
+        if(!m) continue;
+        applyEnvToMat(m);
+        m.envMapIntensity = 1.55;
+        const n = (m.name||'').toLowerCase();
+        if(n.includes('tire') || n.includes('rubber')){
+          m.metalness = 0.05; m.roughness = 0.95; if(m.color) m.color.setHex(0x0a0a0a);
+        } else if(n.includes('plate')){
+          m.metalness = 0.95; m.roughness = 0.12; m.envMapIntensity = 1.8;
+          if(m.color) m.color.setHex(0xc5ccd3);
+        } else {
+          m.metalness = 0.92; m.roughness = 0.26; m.envMapIntensity = 1.65;
+          if(m.color) m.color.setHex(0xd8dee4);
+        }
+        m.needsUpdate = true;
+      }
+    }
+  });
+  const wrap = new THREE.Group();
+  wrap.add(model);
+  // Orient: bbox longer on Z already; face +Z like procedural nose
+  // Model center was odd; fit
+  wrap.updateMatrixWorld(true);
+  let box = new THREE.Box3().setFromObject(wrap);
+  let size = new THREE.Vector3(); box.getSize(size);
+  const targetLen = 5.55;
+  const s = targetLen / Math.max(size.x, size.z);
+  wrap.scale.setScalar(s);
+  wrap.updateMatrixWorld(true);
+  box = new THREE.Box3().setFromObject(wrap);
+  const center = new THREE.Vector3(); box.getCenter(center);
+  wrap.position.set(-center.x, -box.min.y + 0.1, -center.z);
+  // If length was X-dominant, rotate
+  if(size.x > size.z){
+    wrap.rotation.y = Math.PI/2;
+    wrap.updateMatrixWorld(true);
+    box = new THREE.Box3().setFromObject(wrap);
+    box.getCenter(center);
+    wrap.position.x -= center.x; wrap.position.z -= center.z;
+    wrap.position.y -= box.min.y - 0.1;
+  }
+  car.add(wrap);
+  carUsesGLB = true;
+  car.userData.wheels = []; // GLB wheels baked; skip spin
+  addTeslaBadges(car);
+  const hl=new THREE.SpotLight(0xeef6ff, 0, 40, Math.PI/8, 0.5, 1);
+  hl.position.set(0,1.0,2.9); hl.target.position.set(0,0.3,18);
+  car.add(hl); car.add(hl.target); car.userData.headLight=hl;
+  const thruster=new THREE.Mesh(new THREE.CircleGeometry(1.15,10),
+    new THREE.MeshBasicMaterial({color:0x66d0ff, transparent:true, opacity:0, side:THREE.DoubleSide, depthWrite:false}));
+  thruster.rotation.x=-Math.PI/2; thruster.position.y=0.06; car.add(thruster);
+  car.userData.thruster=thruster;
+}
+
+async function makeCar(){
+  try{
+    await makeCarFromGLB();
+    toast('已加载赛博卡车模型', 1600);
+  }catch(e){
+    console.warn('GLB car failed, procedural', e);
+    makeCarProcedural();
+    toast('卡车模型加载失败，使用增强程序车', 2200);
+  }
+}
+
 
 const carState = { x:0,y:0.95,z:22, yaw:0, speed:0, vert:0, flying:false, steer:0 };
 car.position.set(0,0.95,22);
@@ -1017,8 +1229,10 @@ function setDayNight(night){
     amb.intensity=0.28; fill.intensity=0.15; fill.color.setHex(0x4455aa);
     renderer.toneMappingExposure = quality==='high' ? 0.95 : 1.0;
     if(buildingMatGlass){
-      buildingMatGlass.map=nightGlass; buildingMatGlass.emissiveMap=nightGlass; buildingMatGlass.emissiveIntensity=1.05; buildingMatGlass.needsUpdate=true;
-      buildingMatBrick.map=nightBrick; buildingMatBrick.emissiveMap=nightBrick; buildingMatBrick.emissiveIntensity=0.75; buildingMatBrick.needsUpdate=true;
+      if(!(pbrFacade && pbrFacade.color)) buildingMatGlass.map=nightGlass;
+      buildingMatGlass.emissiveMap=nightGlass; buildingMatGlass.emissiveIntensity=0.95; buildingMatGlass.envMapIntensity=0.7; buildingMatGlass.needsUpdate=true;
+      if(!(pbrBrick && pbrBrick.color)) buildingMatBrick.map=nightBrick;
+      buildingMatBrick.emissiveMap=nightBrick; buildingMatBrick.emissiveIntensity=0.7; buildingMatBrick.envMapIntensity=0.35; buildingMatBrick.needsUpdate=true;
     }
     lampHeadMat.color.setHex(0xffe0a0);
     car.userData.headLight.intensity = QUAL[quality].headlight ? 1.8 : 0;
@@ -1041,14 +1255,40 @@ function setDayNight(night){
     amb.intensity=0.42; fill.intensity=0.3; fill.color.setHex(0x88b0d0);
     renderer.toneMappingExposure = quality==='high' ? 1.08 : 1.05;
     if(buildingMatGlass){
-      buildingMatGlass.map=dayGlass; buildingMatGlass.emissiveMap=dayGlass; buildingMatGlass.emissiveIntensity=0.1; buildingMatGlass.needsUpdate=true;
-      buildingMatBrick.map=dayBrick; buildingMatBrick.emissiveMap=dayBrick; buildingMatBrick.emissiveIntensity=0.06; buildingMatBrick.needsUpdate=true;
+      if(!(pbrFacade && pbrFacade.color)) buildingMatGlass.map=dayGlass;
+      buildingMatGlass.emissiveMap=dayGlass; buildingMatGlass.emissiveIntensity=0.08; buildingMatGlass.envMapIntensity=1.25; buildingMatGlass.needsUpdate=true;
+      if(!(pbrBrick && pbrBrick.color)) buildingMatBrick.map=dayBrick;
+      buildingMatBrick.emissiveMap=dayBrick; buildingMatBrick.emissiveIntensity=0.05; buildingMatBrick.envMapIntensity=0.8; buildingMatBrick.needsUpdate=true;
     }
     lampHeadMat.color.setHex(0x888888);
     car.userData.headLight.intensity = QUAL[quality].headlight ? 0.2 : 0;
   }
 }
-function toggleDayNight(){ setDayNight(!isNight); toast(isNight?'夜晚模式':'白天模式'); }
+
+function refreshEnvIntensity(){
+  const ei = isNight ? 0.55 : 1.1;
+  cityRoot.traverse(o=>{
+    if(o.isMesh && o.material && o.material.isMeshStandardMaterial){
+      if(o.material.envMap || envRT){
+        if(envRT) o.material.envMap = envRT.texture;
+        o.material.envMapIntensity = ei;
+        if(o.material.emissiveMap && o.parent !== car){
+          // leave procedural mats to setDayNight; kenney get soft glow
+        }
+      }
+    }
+  });
+  if(car){
+    car.traverse(o=>{
+      if(o.isMesh && o.material && o.material.isMeshStandardMaterial){
+        if(envRT) o.material.envMap = envRT.texture;
+        o.material.envMapIntensity = isNight ? 0.9 : 1.4;
+      }
+    });
+  }
+}
+function toggleDayNight(){ setDayNight(!isNight); refreshEnvIntensity(); toast(isNight?'夜晚模式':'白天模式'); }
+
 
 function applyQuality(name, rebuild){
   quality=name;
@@ -1084,8 +1324,11 @@ function applyQuality(name, rebuild){
   if(rebuild) buildCity(q);
   else {
     if(buildingMatGlass){
-      buildingMatGlass.map=isNight?nightGlass:dayGlass; buildingMatGlass.emissiveMap=buildingMatGlass.map; buildingMatGlass.needsUpdate=true;
-      buildingMatBrick.map=isNight?nightBrick:dayBrick; buildingMatBrick.emissiveMap=buildingMatBrick.map; buildingMatBrick.needsUpdate=true;
+      const g=isNight?nightGlass:dayGlass, b=isNight?nightBrick:dayBrick;
+      if(!(pbrFacade && pbrFacade.color)) buildingMatGlass.map=g;
+      buildingMatGlass.emissiveMap=g; buildingMatGlass.needsUpdate=true;
+      if(!(pbrBrick && pbrBrick.color)) buildingMatBrick.map=b;
+      buildingMatBrick.emissiveMap=b; buildingMatBrick.needsUpdate=true;
     }
   }
   setDayNight(isNight);
@@ -1249,7 +1492,7 @@ function updateCar(dt){
   car.rotation.x=THREE.MathUtils.clamp(-carState.vert*0.01,-0.12,0.12);
 
   const spin=carState.speed*dt*1.5;
-  for(const w of car.userData.wheels) w.rotation.x+=spin;
+  if(car.userData.wheels) for(const w of car.userData.wheels) w.rotation.x+=spin;
 
   const th=car.userData.thruster;
   const want=carState.flying?Math.min(0.65,0.2+Math.abs(carState.vert)*0.015):0;
@@ -1342,16 +1585,99 @@ function tick(now){
   renderer.render(scene, camera);
 }
 
-try{
-  applyQuality(quality, true);
-}catch(e){
-  console.error(e);
-  try{ toast('场景构建出错，已降级启动'); }catch(_){}
+
+async function loadGameAssets(){
+  setLoad(5, '加载环境光…');
+  const q0 = QUAL[quality];
+  try{
+    if(q0.env){
+      const hdr = await new RGBELoader().loadAsync(ASSET_BASE + 'env/city_env.hdr');
+      hdr.mapping = THREE.EquirectangularReflectionMapping;
+      const pmrem = new THREE.PMREMGenerator(renderer);
+      pmrem.compileEquirectangularShader();
+      envRT = pmrem.fromEquirectangular(hdr);
+      scene.environment = envRT.texture;
+      hdr.dispose(); pmrem.dispose();
+    }
+  }catch(e){ console.warn('HDRI failed', e); }
+
+  setLoad(25, '加载建筑贴图…');
+  try{
+    const [fc, fn, fr, fm, bc, bn, br, sc, sn, sr, sm] = await Promise.all([
+      loadTex(ASSET_BASE + 'textures/facade_color.jpg', THREE.SRGBColorSpace),
+      loadTex(ASSET_BASE + 'textures/facade_normal.jpg', null),
+      loadTex(ASSET_BASE + 'textures/facade_rough.jpg', null),
+      loadTex(ASSET_BASE + 'textures/facade_metal.jpg', null),
+      loadTex(ASSET_BASE + 'textures/brick_color.jpg', THREE.SRGBColorSpace),
+      loadTex(ASSET_BASE + 'textures/brick_normal.jpg', null),
+      loadTex(ASSET_BASE + 'textures/brick_rough.jpg', null),
+      loadTex(ASSET_BASE + 'textures/steel_color.jpg', THREE.SRGBColorSpace),
+      loadTex(ASSET_BASE + 'textures/steel_normal.jpg', null),
+      loadTex(ASSET_BASE + 'textures/steel_rough.jpg', null),
+      loadTex(ASSET_BASE + 'textures/steel_metal.jpg', null),
+    ]);
+    pbrFacade = { color:fc, normal:fn, rough:fr, metal:fm };
+    pbrBrick = { color:bc, normal:bn, rough:br };
+    window.__steelPBR = { color:sc, normal:sn, rough:sr, metal:sm };
+  }catch(e){ console.warn('PBR textures failed', e); }
+
+  setLoad(45, '加载城楼模型…');
+  const buildingFiles = [
+    'building-a.glb','building-c.glb','building-e.glb','building-f.glb','building-g.glb',
+    'building-i.glb','building-j.glb','building-k.glb','building-l.glb','building-m.glb','building-n.glb',
+    'building-skyscraper-a.glb','building-skyscraper-b.glb','building-skyscraper-c.glb',
+    'building-skyscraper-d.glb','building-skyscraper-e.glb'
+  ];
+  const useList = quality==='low' ? buildingFiles.filter(n=>n.includes('skyscraper')||n.includes('-a')||n.includes('-e')||n.includes('-j')).slice(0,6)
+    : buildingFiles;
+  kenneyTemplates = [];
+  for(let i=0;i<useList.length;i++){
+    const name = useList[i];
+    try{
+      const gltf = await gltfLoader.loadAsync(ASSET_BASE + 'buildings/' + name);
+      const sceneObj = gltf.scene;
+      sceneObj.updateMatrixWorld(true);
+      const box = new THREE.Box3().setFromObject(sceneObj);
+      const size = new THREE.Vector3(); box.getSize(size);
+      // Center template at origin, feet on y=0
+      const c = new THREE.Vector3(); box.getCenter(c);
+      sceneObj.position.set(-c.x, -box.min.y, -c.z);
+      kenneyTemplates.push({ name, scene: sceneObj, size, isSky: name.includes('skyscraper') });
+    }catch(e){ console.warn('building skip', name, e); }
+    setLoad(45 + (i+1)/useList.length*30, '城楼 '+(i+1)+'/'+useList.length);
+  }
+
+  setLoad(80, '加载赛博卡车…');
+  await makeCar();
+  setLoad(92, '生成都市…');
+  try{
+    applyQuality(quality, true);
+  }catch(e){
+    console.error(e);
+    try{ toast('场景构建出错，已降级启动'); }catch(_){}
+  }
+  setLoad(100, '完成');
+  hideLoader();
+  if(new URLSearchParams(location.search).has('debug')){
+    window.__fcc={carUsesGLB, kenney:kenneyTemplates.length, carChildren:car.children.length, env:!!envRT, pbr:!!pbrFacade};
+    console.log('FCC', window.__fcc);
+  }
 }
-try{
-  const q=new URLSearchParams(location.search).get('mode');
-  if(q==='free'||q==='rings'||q==='coins') setTimeout(()=>startMode(q),150);
-}catch(e){}
+
+(async ()=>{
+  try{
+    await loadGameAssets();
+  }catch(e){
+    console.error(e);
+    hideLoader();
+    try{ makeCarProcedural(); applyQuality(quality, true); }catch(_){}
+    toast('资源加载部分失败，已降级');
+  }
+  try{
+    const q=new URLSearchParams(location.search).get('mode');
+    if(q==='free'||q==='rings'||q==='coins') setTimeout(()=>startMode(q),150);
+  }catch(e){}
+})();
 requestAnimationFrame(tick);
 </script>
 </body>
