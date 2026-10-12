@@ -259,31 +259,67 @@ const ROAD_W = 22;
 const SIDE_ROAD = 16;
 const SIDEWALK = 4.5;
 
-/* Race track centerline (same oval as race mode) — used to keep buildings/props off asphalt */
+/* Race track centerline — used to keep buildings/props off asphalt */
+/* QQ Speed-style winding closed circuit (~3.5km of ribbon):
+   long straights, chicanes, center S-bend, SE hairpin, SW S, NW hairpin.
+   Start/finish on south plaza heading east. */
 const TRACK_CTRL = [
-  [0, 184],
-  [96, 184],
-  [201, 184],
-  [262, 140],
-  [262, 35],
-  [262, -70],
-  [262, -175],
-  [201, -254],
-  [96, -254],
-  [0, -254],
-  [-96, -254],
-  [-201, -254],
-  [-262, -175],
-  [-262, -70],
-  [-262, 35],
-  [-262, 140],
-  [-201, 184],
-  [-96, 184]
+  // START — long eastbound straight
+  [-50, 350],
+  [70, 350],
+  [190, 350],
+  [290, 335],
+  // NE sweep → northbound
+  [360, 280],
+  [385, 200],
+  [375, 120],
+  [350, 55],
+  // Chicane (L-R-L)
+  [290, 20],
+  [210, 45],
+  [150, 5],
+  [90, 35],
+  [30, 5],
+  // Center S-bend
+  [-30, -40],
+  [-90, -95],
+  [-60, -160],
+  [10, -200],
+  [90, -220],
+  // SE hairpin (tight 180)
+  [180, -240],
+  [270, -270],
+  [330, -320],
+  [340, -380],
+  [290, -420],
+  [200, -435],
+  // South long westbound straight
+  [80, -435],
+  [-40, -430],
+  [-160, -410],
+  [-250, -370],
+  // SW S-bend
+  [-320, -300],
+  [-350, -220],
+  [-320, -140],
+  [-250, -90],
+  [-180, -40],
+  [-210, 30],
+  [-280, 90],
+  [-340, 150],
+  // West long northbound
+  [-370, 220],
+  [-375, 290],
+  [-340, 345],
+  // NW hairpin → east to start
+  [-280, 380],
+  [-180, 395],
+  [-100, 385]
 ];
 const TRACK_HALF_W = 11;
 /* Corridor clear scaled with larger track: asphalt ~22m; buildings ~49m and props ~35m from centerline */
-const TRACK_CLEAR_BUILDING = 49;
-const TRACK_CLEAR_PROP = 35;
+const TRACK_CLEAR_BUILDING = 62;
+const TRACK_CLEAR_PROP = 42;
 const TRACK_CLEAR_M = TRACK_CLEAR_BUILDING;
 
 function hitsTrackRibbon(x, z, clearM = TRACK_CLEAR_M){
@@ -349,6 +385,36 @@ function scrubKenneyMeshesOffTrack(){
     cityRoot.remove(o);
   }
   if(doomed.length) console.info('scrubbed Kenney off track:', doomed.length);
+}
+
+/** Zero-out InstancedMesh building instances whose footprint still hits the race corridor. */
+function scrubInstancedBuildingsOffTrack(){
+  let killed=0;
+  for(const mesh of [buildingMeshGlass, buildingMeshBrick]){
+    if(!mesh || !mesh.isInstancedMesh) continue;
+    const m = new THREE.Matrix4();
+    const pos = new THREE.Vector3();
+    const quat = new THREE.Quaternion();
+    const scl = new THREE.Vector3();
+    const dummy = new THREE.Object3D();
+    // Approximate instance footprint from first non-zero scale (geometry is unit box scaled per-instance)
+    for(let i=0;i<mesh.count;i++){
+      mesh.getMatrixAt(i, m);
+      m.decompose(pos, quat, scl);
+      if(scl.x < 0.01 && scl.z < 0.01) continue;
+      const w = Math.abs(scl.x), d = Math.abs(scl.z), h = Math.abs(scl.y);
+      if(buildingHitsTrack(pos.x, pos.z, w*1.2, d*1.2, TRACK_CLEAR_BUILDING)){
+        dummy.position.copy(pos);
+        dummy.quaternion.copy(quat);
+        dummy.scale.set(0.001, 0.001, 0.001);
+        dummy.updateMatrix();
+        mesh.setMatrixAt(i, dummy.matrix);
+        killed++;
+      }
+    }
+    if(killed) mesh.instanceMatrix.needsUpdate = true;
+  }
+  if(killed) console.info('scrubbed instanced buildings off track:', killed);
 }
 
 
@@ -988,6 +1054,7 @@ function buildCity(q){
 
   try{ placeKenneyBuildings(q); }catch(e){ console.warn('kenney place', e); }
   scrubKenneyMeshesOffTrack();
+  scrubInstancedBuildingsOffTrack();
   scrubCollidersOffTrack();
   try{ buildRaceTrack(); }catch(e){ console.warn('track build', e); }
 }
@@ -1608,7 +1675,7 @@ let race = {
   active:false, countdown:0, racing:false, finished:false,
   lap:1, totalLaps:3, cp:0, time:0, lapStart:0, bestLap:null,
   key:'track', targetTime:0, wrongWay:false, lastGoodCp:0,
-  startPos:{x:0,y:0.95,z:105,yaw:Math.PI/2} // face +X (east) along first segment
+  startPos:{x:-50,y:0.95,z:350,yaw:Math.PI/2} // overwritten by buildRaceTrack
 };
 
 const elLap = document.getElementById('lapVal');
@@ -1926,7 +1993,7 @@ function buildRaceTrack(){
   }
 
   // Checkpoints every ~T meters (skip start which is finish)
-  const cpEvery = Math.max(4, Math.floor(trackPoints.length / 10));
+  const cpEvery = Math.max(4, Math.floor(trackPoints.length / 14));
   trackCheckpoints = [];
   for(let i=0;i<trackPoints.length;i+=cpEvery){
     if(i===0) continue; // start/finish separate
@@ -2005,7 +2072,7 @@ function buildRaceTrack(){
 
   // Boost pads
   trackBoosts=[];
-  const boostIdx = [Math.floor(trackPoints.length*0.2), Math.floor(trackPoints.length*0.45), Math.floor(trackPoints.length*0.7), Math.floor(trackPoints.length*0.9)];
+  const boostIdx = [0.12,0.28,0.42,0.55,0.68,0.82,0.94].map(f=>Math.floor(trackPoints.length*f));
   for(const bi of boostIdx){
     const p=trackPoints[bi % trackPoints.length];
     const pad=new THREE.Mesh(boxGeo, boostMat);
@@ -2684,9 +2751,17 @@ async function loadGameAssets(){
   setLoad(100, 'Done');
   hideLoader();
   if(new URLSearchParams(location.search).has('debug')){
+    let lapLen=0;
+    for(let i=0;i<trackPoints.length;i++){
+      const a=trackPoints[i], b=trackPoints[(i+1)%trackPoints.length];
+      lapLen+=Math.hypot(b.x-a.x,b.z-a.z);
+    }
     window.__fcc={carUsesGLB, kenney:kenneyTemplates.length, carChildren:car.children.length, env:!!envRT, pbr:!!pbrFacade, trackPts:trackPoints.length, cps:trackCheckpoints.length,
+      boosts:trackBoosts.length, lapLen:Math.round(lapLen), start:race.startPos, isNight,
       clearB:TRACK_CLEAR_BUILDING, clearP:TRACK_CLEAR_PROP, colliders:colliders.length};
     window.__race=race;
+    window.__trackPoints=trackPoints;
+    window.__carState=carState; window.__car=car; window.__camera=camera;
     window.__probeTrack = function(){
       let bad=0, asphaltOverlap=0; const samples=[];
       for(const c of colliders){
@@ -2702,7 +2777,20 @@ async function loadGameAssets(){
           asphaltOverlap++; break;
         }
       }
-      return {bad, asphaltOverlap, colliders:colliders.length, samples, clearB:TRACK_CLEAR_BUILDING, clearP:TRACK_CLEAR_PROP};
+      // also count city meshes whose feet sit on asphalt (excl. trackGroup)
+      let meshOnAsphalt=0; const meshSamples=[];
+      const soft=TRACK_HALF_W+1.2;
+      cityRoot.traverse(o=>{
+        if(!o.isMesh||!o.visible) return;
+        let n=o.parent; while(n){ if(n===trackGroup) return; n=n.parent; }
+        const wp=new THREE.Vector3(); o.getWorldPosition(wp);
+        if(wp.y>8) return;
+        if(hitsTrackRibbon(wp.x,wp.z,soft)){
+          meshOnAsphalt++;
+          if(meshSamples.length<8) meshSamples.push({x:wp.x|0,z:wp.z|0,y:+wp.y.toFixed(1)});
+        }
+      });
+      return {bad, asphaltOverlap, meshOnAsphalt, meshSamples, colliders:colliders.length, samples, clearB:TRACK_CLEAR_BUILDING, clearP:TRACK_CLEAR_PROP, lapLen:Math.round(lapLen), cps:trackCheckpoints.length, boosts:trackBoosts.length};
     };
     console.log('FCC', window.__fcc);
   }
