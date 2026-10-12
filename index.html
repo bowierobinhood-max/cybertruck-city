@@ -1986,13 +1986,12 @@ function densifyClosedPolyline(pts, spacing=3.5){
   return out;
 }
 
-/** Continuous barrier + neon top along mitered offset polyline (single mesh each side). */
+/** Continuous barrier + neon top along offset polyline (single mesh each side). */
 function addContinuousRail(offsetPts, barrierMat, neonMat){
   if(offsetPts.length < 3) return;
-  const smooth = densifyClosedPolyline(offsetPts, 3.2);
-  const wall=new THREE.Mesh(makeRailRibbonGeo(smooth, 0.0, 1.08, 0.22), barrierMat);
+  const wall=new THREE.Mesh(makeRailRibbonGeo(offsetPts, 0.0, 1.08, 0.22), barrierMat);
   trackGroup.add(wall);
-  const strip=new THREE.Mesh(makeRailRibbonGeo(smooth, 1.05, 1.16, 0.10), neonMat);
+  const strip=new THREE.Mesh(makeRailRibbonGeo(offsetPts, 1.05, 1.16, 0.10), neonMat);
   trackGroup.add(strip);
 }
 
@@ -2070,15 +2069,17 @@ function buildRaceTrack(){
 
   const hw = TRACK_HALF_W;
   const centerPts = trackPoints.map(p=>({x:p.x,z:p.z}));
+  // Densify centerline once, then offset — keeps L/R point counts paired
+  const denseCenter = densifyClosedPolyline(centerPts, 3.2);
   // Continuous asphalt + edge lines (mitered offsets — no segment gaps at bends)
   {
-    const leftEdge = densifyClosedPolyline(offsetClosedPolyline(centerPts, hw), 4);
-    const rightEdge = densifyClosedPolyline(offsetClosedPolyline(centerPts, -hw), 4);
+    const leftEdge = offsetClosedPolyline(denseCenter, hw);
+    const rightEdge = offsetClosedPolyline(denseCenter, -hw);
     const road=new THREE.Mesh(makeRoadRibbonGeo(leftEdge, rightEdge, 0.08), asphalt);
     road.receiveShadow=true;
     trackGroup.add(road);
-    const leftLine = densifyClosedPolyline(offsetClosedPolyline(centerPts, hw-0.45), 4);
-    const rightLine = densifyClosedPolyline(offsetClosedPolyline(centerPts, -(hw-0.45)), 4);
+    const leftLine = offsetClosedPolyline(denseCenter, hw-0.45);
+    const rightLine = offsetClosedPolyline(denseCenter, -(hw-0.45));
     trackGroup.add(new THREE.Mesh(makeEdgeLineGeo(leftLine, 0.16, 0.2), whiteLineMat));
     trackGroup.add(new THREE.Mesh(makeEdgeLineGeo(rightLine, 0.16, 0.2), whiteLineMat));
   }
@@ -2093,13 +2094,21 @@ function buildRaceTrack(){
     trackGroup.add(ch);
   }
 
-  // Continuous side rails from mitered offset polylines (flush joints, no gaps/spikes)
+  // Continuous side rails: offset dense center, then light smooth (same spacing both sides)
   {
     const railDist = hw + 0.85;
-    const leftRail = offsetClosedPolyline(centerPts, railDist);
-    const rightRail = offsetClosedPolyline(centerPts, -railDist);
-    addContinuousRail(leftRail, barrierMat, neonMat);   // left = cyan
-    addContinuousRail(rightRail, barrierMat, redNeon);  // right = red
+    const leftRail = densifyClosedPolyline(offsetClosedPolyline(denseCenter, railDist), 2.8);
+    const rightRail = densifyClosedPolyline(offsetClosedPolyline(denseCenter, -railDist), 2.8);
+    // Force identical sample counts for stable look
+    const nRail = Math.max(leftRail.length, rightRail.length);
+    function resampleExact(poly, n){
+      const curve = new THREE.CatmullRomCurve3(poly.map(p=>new THREE.Vector3(p.x,0,p.z)), true, 'catmullrom', 0.15);
+      const out=[];
+      for(let i=0;i<n;i++){ const v=curve.getPoint(i/n); out.push({x:v.x,z:v.z}); }
+      return out;
+    }
+    addContinuousRail(resampleExact(leftRail, nRail), barrierMat, neonMat);
+    addContinuousRail(resampleExact(rightRail, nRail), barrierMat, redNeon);
   }
 
   // Center dashes along track
