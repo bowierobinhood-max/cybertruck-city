@@ -56,6 +56,18 @@ html,body{width:100%;height:100%;overflow:hidden;background:#05070c;font-family:
 .joy .knob{position:absolute;left:50%;top:50%;width:38px;height:38px;margin:-19px 0 0 -19px;border-radius:50%;background:rgba(140,200,255,.45)}
 .flyBtns{position:absolute;right:20px;bottom:24px;display:flex;flex-direction:column;gap:8px;pointer-events:auto}
 .flyBtns button{width:58px;height:44px;border-radius:10px;border:1px solid rgba(255,255,255,.25);background:rgba(20,40,80,.75);color:#fff;font-size:13px}
+
+#raceHud{position:absolute;left:12px;top:118px;display:none;flex-direction:column;gap:6px;text-shadow:0 1px 3px rgba(0,0,0,.7)}
+#raceHud .stat .value.cyan{color:#7ef0ff}
+#countdown{position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);font-size:72px;font-weight:900;color:#fff;text-shadow:0 0 24px #3ad0ff,0 4px 12px rgba(0,0,0,.8);opacity:0;pointer-events:none;z-index:20;letter-spacing:4px}
+#countdown.show{opacity:1}
+#guideArrow{position:absolute;left:50%;top:78px;transform:translateX(-50%);width:0;height:0;border-left:14px solid transparent;border-right:14px solid transparent;border-bottom:26px solid #7ef0ff;filter:drop-shadow(0 0 8px #3ad0ff);opacity:0;pointer-events:none;z-index:12;transition:opacity .15s}
+#guideArrow.show{opacity:.95}
+#minimapWrap{position:absolute;right:12px;top:52px;width:132px;height:132px;border-radius:12px;overflow:hidden;border:1px solid rgba(120,180,255,.35);background:rgba(6,12,24,.78);display:none;pointer-events:none}
+#minimap{width:100%;height:100%;display:block}
+#wrongWay{position:absolute;left:50%;top:28%;transform:translateX(-50%);background:rgba(160,20,40,.88);border:1px solid #ff6677;color:#fff;padding:8px 18px;border-radius:10px;font-weight:800;font-size:18px;letter-spacing:2px;display:none;z-index:15;pointer-events:none}
+.modes .section{font-size:11px;opacity:.55;margin:8px 0 4px;letter-spacing:1px}
+.modes button.primary{border-color:rgba(100,220,255,.55);background:linear-gradient(180deg,rgba(40,100,160,.7),rgba(20,50,90,.75))}
 </style>
 </head>
 <body>
@@ -64,9 +76,19 @@ html,body{width:100%;height:100%;overflow:hidden;background:#05070c;font-family:
   <div id="hud">
     <div class="stat"><div class="label">速度 KM/H</div><div class="value" id="spd">0</div></div>
     <div class="stat"><div class="label">高度 M</div><div class="value green" id="alt">0</div></div>
-    <div class="stat"><div class="label">得分</div><div class="value gold" id="score">0</div></div>
+    <div class="stat" id="scoreStat"><div class="label">得分</div><div class="value gold" id="score">0</div></div>
+  </div>
+  <div id="raceHud">
+    <div class="stat"><div class="label">圈数</div><div class="value cyan" id="lapVal">1 / 3</div></div>
+    <div class="stat"><div class="label">检查点</div><div class="value" id="cpVal">1 / 12</div></div>
+    <div class="stat"><div class="label">当前时间</div><div class="value gold" id="timeVal">0.00</div></div>
+    <div class="stat"><div class="label">最佳成绩</div><div class="value green" id="bestVal">—</div></div>
   </div>
   <div id="missionBox"><h3 id="mTitle">任务</h3><p id="mDesc">—</p></div>
+  <div id="countdown"></div>
+  <div id="guideArrow"></div>
+  <div id="wrongWay">反向！</div>
+  <div id="minimapWrap"><canvas id="minimap" width="132" height="132"></canvas></div>
   <div id="toast"></div>
   <div id="controlsHint">
     <div><kbd>W</kbd><kbd>↑</kbd> 加速 · <kbd>S</kbd><kbd>↓</kbd> 刹车/倒车</div>
@@ -90,7 +112,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#05070c;font-family:
   <div id="menu" class="panel">
     <div class="card">
       <h1>飞车都市</h1>
-      <p class="sub">真·赛博卡车 GLB + Kenney 城楼模型 / PBR 贴图。画质可调保帧数——仍不是真 GTA，但车和楼都扎实多了。</p>
+      <p class="sub">QQ飞车风格固定赛道 · 赛博卡车 GLB + 城楼模型。主打圈速竞速，自由驾驶仍可进整座城。</p>
       <div class="quality" id="qualityRow">
         <span>画质</span>
         <button type="button" data-q="high">高</button>
@@ -98,15 +120,20 @@ html,body{width:100%;height:100%;overflow:hidden;background:#05070c;font-family:
         <button type="button" data-q="low">低</button>
       </div>
       <div class="modes">
-        <button type="button" data-mode="free">自由驾驶<span>Explore the city · 练习飞行与穿楼</span></button>
-        <button type="button" data-mode="rings">霓虹环竞速<span>Neon Ring Race · 依次穿过环门</span></button>
-        <button type="button" data-mode="coins">金币寻宝<span>Coin Hunt · 收集漂浮金币</span></button>
-        <button type="button" data-mode="sbend">十秒 S 弯<span>10s S-Curve · 10 秒内穿过全部弯门</span></button>
-        <button type="button" data-mode="rooftop">限时穿城<span>Rooftop Rush · 限时飞到屋顶停机坪</span></button>
-        <button type="button" data-mode="lowgate">低空穿桥<span>Low Gates · 限高依次穿低门</span></button>
-        <button type="button" data-mode="cones">漂移绕桶<span>Cone Slalom · 绕桶计时挑战</span></button>
+        <div class="section">赛道竞速</div>
+        <button type="button" class="primary" data-mode="track">单人赛道 · 3 圈<span>都市环线 · 倒计时发车 · 冲线计时 · 纪录本地保存</span></button>
+        <button type="button" class="primary" data-mode="timeattack">计时赛 · 1 圈<span>单圈最速 · 冲刺刷新最佳成绩</span></button>
+        <button type="button" class="primary" data-mode="target">竞速挑战 · 目标成绩<span>3 圈内打进目标时间（根据最佳动态）</span></button>
+        <div class="section">其他</div>
+        <button type="button" data-mode="free">自由驾驶<span>整座城随便飞 · 赛道仍可见</span></button>
+        <button type="button" data-mode="rings">霓虹环竞速<span>其他挑战 · 空中环门</span></button>
+        <button type="button" data-mode="coins">金币寻宝<span>其他挑战 · 收集金币</span></button>
+        <button type="button" data-mode="sbend">十秒 S 弯<span>其他挑战</span></button>
+        <button type="button" data-mode="rooftop">限时穿城<span>其他挑战</span></button>
+        <button type="button" data-mode="lowgate">低空穿桥<span>其他挑战</span></button>
+        <button type="button" data-mode="cones">漂移绕桶<span>其他挑战</span></button>
       </div>
-      <p class="help">W/↑ 加速 · S/↓ 刹车倒车 · A/D 转向<br>空格/R 上升 · Shift/F 下降（松手保持高度）· C 视角 · N 昼夜</p>
+      <p class="help">W/↑ 加速 · S/↓ 刹车 · A/D 转向 · 空格飞 · B 回检查点<br>赛道模式贴地冲刺更像飞车 · C 视角 · N 昼夜 · P 暂停</p>
     </div>
   </div>
   <div id="pauseOverlay">
@@ -840,6 +867,9 @@ function buildCity(q){
       yaw: alongMain?0:Math.PI/2
     });
   }
+
+  try{ placeKenneyBuildings(q); }catch(e){ console.warn('kenney place', e); }
+  try{ buildRaceTrack(); }catch(e){ console.warn('track build', e); }
 }
 
 
@@ -1222,6 +1252,7 @@ window.addEventListener('keydown', e=>{
   if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault();
   if(e.code==='KeyC' && playing && !paused) cycleCamera();
   if(e.code==='KeyN' && playing) toggleDayNight();
+  if(e.code==='KeyB' && playing && !paused && race.active) respawnAtCheckpoint();
   if((e.code==='KeyP'||e.code==='Escape') && playing) togglePause();
 });
 window.addEventListener('keyup', e=>{ keys[e.code]=false; });
@@ -1277,7 +1308,11 @@ function updateCamera(dt){
   const fx=-Math.sin(carState.yaw), fz=-Math.cos(carState.yaw);
   const pos=car.position;
   let dx,dy,dz,lx,ly,lz;
-  if(camMode===0){ dx=pos.x-fx*12; dy=pos.y+4.5; dz=pos.z-fz*12; lx=pos.x+fx*8; ly=pos.y+1.3; lz=pos.z+fz*8; }
+  if(camMode===0){
+    const back = (race.active&&race.racing)?10.5:12;
+    const up = (race.active&&race.racing)?3.8:4.5;
+    dx=pos.x-fx*back; dy=pos.y+up; dz=pos.z-fz*back; lx=pos.x+fx*10; ly=pos.y+1.2; lz=pos.z+fz*10;
+  }
   else if(camMode===1){ dx=pos.x+fx*0.2; dy=pos.y+1.45; dz=pos.z+fz*0.2; lx=pos.x+fx*18; ly=pos.y+1.1; lz=pos.z+fz*18; }
   else { dx=pos.x-fx*5; dy=pos.y+28; dz=pos.z-fz*5; lx=pos.x; ly=pos.y; lz=pos.z; }
   const k=1-Math.pow(0.0008,dt);
@@ -1411,10 +1446,11 @@ function applyQuality(name, rebuild){
   qualBtn.textContent='画质:'+({high:'高',med:'中',low:'低'}[quality]);
 }
 
-/* ========== MISSIONS ========== */
+/* ========== MISSIONS + QQ飞车赛道 ========== */
 const ringGroup=new THREE.Group(); scene.add(ringGroup);
 const coinGroup=new THREE.Group(); scene.add(coinGroup);
 const challengeGroup=new THREE.Group(); scene.add(challengeGroup);
+const trackGroup=new THREE.Group(); scene.add(trackGroup);
 let rings=[], coins=[], gates=[], score=0, mode='free', ringIndex=0, ringStartTime=0, missionDone=false, missionFailed=false;
 let missionLimit=0, missionElapsed=0, altLimit=0, helipad=null;
 let bestTimes={};
@@ -1428,6 +1464,11 @@ function bestLabel(key){
   const b=bestTimes[key];
   return b!=null ? `最佳 ${b.toFixed(1)}s` : '尚无纪录';
 }
+function fmtTime(sec){
+  const m=Math.floor(sec/60), s=sec-m*60;
+  return m>0 ? `${m}:${s.toFixed(2).padStart(5,'0')}` : s.toFixed(2);
+}
+
 const sharedRingGeo = new THREE.TorusGeometry(5.2, 0.32, 6, 16);
 const sharedRingMat = new THREE.MeshBasicMaterial({color:0x33e0ff, transparent:true});
 const sharedCoinGeo = new THREE.CylinderGeometry(1.0,1.0,0.2,10);
@@ -1438,13 +1479,64 @@ const coneMat = new THREE.MeshStandardMaterial({color:0xff6a1a, metalness:0.1, r
 const padMat = new THREE.MeshStandardMaterial({color:0x1a3048, metalness:0.4, roughness:0.5, emissive:0x0a2030, emissiveIntensity:0.4});
 const padMarkMat = new THREE.MeshBasicMaterial({color:0xffd76a, side:THREE.DoubleSide});
 
+/* —— Dedicated circuit control points (clockwise oval around Central Park) —— */
+const TRACK_CTRL = [
+  [0, 105],
+  [55, 105],
+  [115, 105],
+  [150, 80],
+  [150, 20],
+  [150, -40],
+  [150, -100],
+  [115, -145],
+  [55, -145],
+  [0, -145],
+  [-55, -145],
+  [-115, -145],
+  [-150, -100],
+  [-150, -40],
+  [-150, 20],
+  [-150, 80],
+  [-115, 105],
+  [-55, 105],
+];
+const TRACK_HALF_W = 9.5;
+let trackPoints = [];      // {x,z,yaw,nx,nz} dense samples
+let trackCheckpoints = []; // arches along track
+let trackBoosts = [];
+let trackBuilt = false;
+let race = {
+  active:false, countdown:0, racing:false, finished:false,
+  lap:1, totalLaps:3, cp:0, time:0, lapStart:0, bestLap:null,
+  key:'track', targetTime:0, wrongWay:false, lastGoodCp:0,
+  startPos:{x:0,y:0.95,z:105,yaw:Math.PI/2} // face +X (east) along first segment
+};
+
+const elLap = document.getElementById('lapVal');
+const elCp = document.getElementById('cpVal');
+const elTime = document.getElementById('timeVal');
+const elBest = document.getElementById('bestVal');
+const raceHud = document.getElementById('raceHud');
+const scoreStat = document.getElementById('scoreStat');
+const countdownEl = document.getElementById('countdown');
+const guideArrow = document.getElementById('guideArrow');
+const wrongWayEl = document.getElementById('wrongWay');
+const minimapWrap = document.getElementById('minimapWrap');
+const minimap = document.getElementById('minimap');
+const mmapCtx = minimap ? minimap.getContext('2d') : null;
+
 function clearMissionObjects(){
   while(ringGroup.children.length) ringGroup.remove(ringGroup.children[0]);
   while(coinGroup.children.length) coinGroup.remove(coinGroup.children[0]);
   while(challengeGroup.children.length) challengeGroup.remove(challengeGroup.children[0]);
   rings=[]; coins=[]; gates=[]; ringIndex=0; missionDone=false; missionFailed=false;
   missionLimit=0; missionElapsed=0; altLimit=0; helipad=null;
+  race.active=false; race.racing=false; race.finished=false; race.countdown=0;
+  if(countdownEl){ countdownEl.classList.remove('show'); countdownEl.textContent=''; }
+  if(wrongWayEl) wrongWayEl.style.display='none';
+  if(guideArrow) guideArrow.classList.remove('show');
 }
+
 function makeRing(x,y,z,yaw){
   const tor=new THREE.Mesh(sharedRingGeo, sharedRingMat.clone());
   tor.position.set(x,y,z);
@@ -1460,7 +1552,6 @@ function makeGate(x,y,z,yaw, w=7, h=5){
   const postR=postL.clone(); postR.position.x=w/2; g.add(postR);
   const bar=new THREE.Mesh(boxGeo, gateMatActive.clone());
   bar.scale.set(w+0.35,0.3,0.3); bar.position.set(0,h,0); g.add(bar);
-  // neon arch ring hint
   const arc=new THREE.Mesh(new THREE.TorusGeometry(w*0.42,0.18,6,20,Math.PI), gateMatActive.clone());
   arc.rotation.z=Math.PI; arc.position.y=h*0.15; g.add(arc);
   g.position.set(x,y,z); g.rotation.y=yaw;
@@ -1508,11 +1599,9 @@ function spawnCoins(){
     coins.push({mesh, taken:false});
   }
 }
-/* --- Challenge: 十秒 S 弯 --- */
 function spawnSBend(){
   clearMissionObjects();
   missionLimit=10;
-  // S-curve along northbound main road (clear of park buildings)
   const pts=[];
   for(let i=0;i<8;i++){
     const t=i/7;
@@ -1529,17 +1618,14 @@ function spawnSBend(){
   setGateStyle(gates[0], true);
   for(let i=1;i<gates.length;i++) setGateStyle(gates[i], false);
 }
-/* --- Challenge: 限时穿城 → rooftop helipad --- */
 function spawnRooftop(){
   clearMissionObjects();
   missionLimit=40;
-  // Place pad on a tall tower NE of park
   const px=95, pz=-95, ph=78;
   const pad=new THREE.Mesh(new THREE.CylinderGeometry(7.5,7.5,0.35,24), padMat);
   pad.position.set(px, ph, pz); challengeGroup.add(pad);
   const ring=new THREE.Mesh(new THREE.RingGeometry(3.2,6.8,24), padMarkMat);
   ring.rotation.x=-Math.PI/2; ring.position.set(px, ph+0.22, pz); challengeGroup.add(ring);
-  // simple H mark via two boxes + bar
   const h1=new THREE.Mesh(boxGeo, new THREE.MeshBasicMaterial({color:0xffd76a}));
   h1.scale.set(0.5,0.08,3.2); h1.position.set(px-1.4,ph+0.25,pz); challengeGroup.add(h1);
   const h2=h1.clone(); h2.position.x=px+1.4; challengeGroup.add(h2);
@@ -1547,7 +1633,6 @@ function spawnRooftop(){
   h3.scale.set(3.2,0.08,0.5); h3.position.set(px,ph+0.25,pz); challengeGroup.add(h3);
   const beacon=new THREE.PointLight(0xffd76a, 2.2, 40);
   beacon.position.set(px, ph+4, pz); challengeGroup.add(beacon);
-  // guide rings in air toward pad
   const path=[[30,18,-30],[55,35,-55],[78,55,-78],[px,ph+2,pz]];
   for(let i=0;i<path.length-1;i++){
     const [x,y,z]=path[i];
@@ -1559,11 +1644,10 @@ function spawnRooftop(){
   }
   helipad={pos:new THREE.Vector3(px,ph+1.5,pz), r2:64};
 }
-/* --- Challenge: 低空穿桥 --- */
 function spawnLowGates(){
   clearMissionObjects();
   missionLimit=55;
-  altLimit=14; // fail if car y > ~14 (alt ~13m)
+  altLimit=14;
   const path=[];
   for(let i=0;i<10;i++){
     const z=40 - i*22;
@@ -1580,11 +1664,9 @@ function spawnLowGates(){
     if(i>0) setGateStyle(g, false);
   }
 }
-/* --- Challenge: 漂移绕桶 --- */
 function spawnCones(){
   clearMissionObjects();
   missionLimit=35;
-  // slalom cones along road z+, gates between pairs
   const baseZ=45;
   for(let i=0;i<9;i++){
     const z=baseZ - i*14;
@@ -1626,7 +1708,509 @@ function updateGateProgress(hitR2=36){
   }
   return false;
 }
+
+/* ========== BUILD RACE TRACK ========== */
+function clearTrackMeshes(){
+  while(trackGroup.children.length){
+    const o=trackGroup.children[0];
+    trackGroup.remove(o);
+  }
+  trackPoints=[]; trackCheckpoints=[]; trackBoosts=[]; trackBuilt=false;
+}
+
+function resampleTrack(ctrl, step=8){
+  const pts=[];
+  const n=ctrl.length;
+  for(let i=0;i<n;i++){
+    const a=ctrl[i], b=ctrl[(i+1)%n];
+    const dx=b[0]-a[0], dz=b[1]-a[1];
+    const len=Math.hypot(dx,dz)||1;
+    const segs=Math.max(1, Math.round(len/step));
+    for(let s=0;s<segs;s++){
+      const t=s/segs;
+      const x=a[0]+dx*t, z=a[1]+dz*t;
+      const yaw=Math.atan2(dx, dz); // face along segment (+Z local)
+      // movement uses (-sin,-cos) for yaw=0 → -Z; track yaw for barriers:
+      // barrier left/right: perpendicular
+      const nx=-Math.cos(Math.atan2(dx,dz)); // left normal approx
+      const nz=Math.sin(Math.atan2(dx,dz));
+      pts.push({x,z,yaw:Math.atan2(dx,dz), nx:-Math.cos(Math.atan2(dx,dz)), nz:Math.sin(Math.atan2(dx,dz)), dist:0});
+    }
+  }
+  let acc=0;
+  for(let i=0;i<pts.length;i++){
+    pts[i].dist=acc;
+    const j=(i+1)%pts.length;
+    acc+=Math.hypot(pts[j].x-pts[i].x, pts[j].z-pts[i].z);
+  }
+  pts._length=acc;
+  return pts;
+}
+
+function buildRaceTrack(){
+  clearTrackMeshes();
+  trackPoints = resampleTrack(TRACK_CTRL, 14);
+  const asphalt = new THREE.MeshStandardMaterial({
+    color:0x2a2e36, metalness:0.08, roughness:0.92,
+    map: asphaltTex || null
+  });
+  if(asphalt.map){ asphalt.map = asphalt.map.clone(); asphalt.map.wrapS=asphalt.map.wrapT=THREE.RepeatWrapping; asphalt.map.repeat.set(2,8); }
+  applyEnvToMat(asphalt);
+  const barrierMat = new THREE.MeshStandardMaterial({
+    color:0xc8d0d8, metalness:0.55, roughness:0.35,
+    emissive:0x102030, emissiveIntensity:0.25
+  });
+  applyEnvToMat(barrierMat);
+  const neonMat = new THREE.MeshBasicMaterial({color:0x33e8ff, transparent:true, opacity:0.85});
+  const redNeon = new THREE.MeshBasicMaterial({color:0xff4466, transparent:true, opacity:0.9});
+  const chevronMat = new THREE.MeshBasicMaterial({color:0xffe066, transparent:true, opacity:0.75, side:THREE.DoubleSide});
+  const boostMat = new THREE.MeshBasicMaterial({color:0x66ffaa, transparent:true, opacity:0.7, side:THREE.DoubleSide});
+  const finishMat = new THREE.MeshBasicMaterial({color:0xffffff, side:THREE.DoubleSide});
+
+  const hw = TRACK_HALF_W;
+  for(let i=0;i<trackPoints.length;i++){
+    const p=trackPoints[i];
+    const q=trackPoints[(i+1)%trackPoints.length];
+    const dx=q.x-p.x, dz=q.z-p.z;
+    const len=Math.hypot(dx,dz)||7;
+    const yaw=Math.atan2(dx, dz); // local +Z along segment
+    const mx=(p.x+q.x)*0.5, mz=(p.z+q.z)*0.5;
+    const nx=-Math.cos(yaw), nz=Math.sin(yaw); // left normal
+    // asphalt ribbon as thin box (stable orientation)
+    const road=new THREE.Mesh(boxGeo, asphalt);
+    road.scale.set(hw*2, 0.14, len*1.08);
+    road.position.set(mx, 0.07, mz);
+    road.rotation.y=yaw;
+    road.receiveShadow=true;
+    trackGroup.add(road);
+    // edge lines (thin boxes on surface)
+    for(const side of [-1,1]){
+      const edge=new THREE.Mesh(boxGeo, whiteLineMat);
+      edge.scale.set(0.38, 0.04, len*1.05);
+      edge.position.set(mx+nx*side*(hw-0.45), 0.15, mz+nz*side*(hw-0.45));
+      edge.rotation.y=yaw;
+      trackGroup.add(edge);
+    }
+    // barriers every other segment (visual rails); no physics colliders — off-track uses soft respawn
+    if(i%2===0){
+      for(const side of [-1,1]){
+        const bx=mx+nx*side*(hw+0.75), bz=mz+nz*side*(hw+0.75);
+        const wall=new THREE.Mesh(boxGeo, barrierMat);
+        wall.scale.set(0.38, 1.05, len*2.05);
+        wall.position.set(bx, 0.55, bz);
+        wall.rotation.y=yaw;
+        trackGroup.add(wall);
+        const strip=new THREE.Mesh(boxGeo, side>0?neonMat:redNeon);
+        strip.scale.set(0.16, 0.1, len*2.05);
+        strip.position.set(bx, 1.12, bz);
+        strip.rotation.y=yaw;
+        trackGroup.add(strip);
+      }
+    }
+    if(i%3===0){
+      const ch=new THREE.Mesh(boxGeo, chevronMat);
+      ch.scale.set(2.6, 0.05, 1.8);
+      ch.position.set(mx, 0.16, mz);
+      ch.rotation.y=yaw;
+      trackGroup.add(ch);
+    }
+  }
+
+  // Center dashes along track
+  for(let i=0;i<trackPoints.length;i+=2){
+    const p=trackPoints[i];
+    const dash=new THREE.Mesh(boxGeo, lineMat);
+    dash.scale.set(0.65, 0.05, 3.0);
+    dash.rotation.y=p.yaw;
+    dash.position.set(p.x, 0.15, p.z);
+    trackGroup.add(dash);
+  }
+
+  // Checkpoints every ~T meters (skip start which is finish)
+  const cpEvery = Math.max(4, Math.floor(trackPoints.length / 10));
+  trackCheckpoints = [];
+  for(let i=0;i<trackPoints.length;i+=cpEvery){
+    if(i===0) continue; // start/finish separate
+    const p=trackPoints[i];
+    const w=hw*2.1, h=5.5;
+    const g=new THREE.Group();
+    const postMat = new THREE.MeshStandardMaterial({color:0x33c8ff, metalness:0.4, roughness:0.4, emissive:0x1188aa, emissiveIntensity:0.6});
+    const postL=new THREE.Mesh(boxGeo, postMat);
+    postL.scale.set(0.4,h,0.4); postL.position.set(-w/2,h/2,0); g.add(postL);
+    const postR=postL.clone(); postR.position.x=w/2; g.add(postR);
+    const bar=new THREE.Mesh(boxGeo, postMat);
+    bar.scale.set(w+0.4,0.35,0.35); bar.position.set(0,h,0); g.add(bar);
+    const banner=new THREE.Mesh(planeGeo, new THREE.MeshBasicMaterial({color:0x224466, transparent:true, opacity:0.45, side:THREE.DoubleSide}));
+    banner.scale.set(w*0.9, 1.8, 1); banner.position.set(0, h*0.55, 0); g.add(banner);
+    g.position.set(p.x, 0, p.z); g.rotation.y=p.yaw;
+    trackGroup.add(g);
+    trackCheckpoints.push({
+      mesh:g, x:p.x, z:p.z, yaw:p.yaw, idx:trackCheckpoints.length,
+      pos:new THREE.Vector3(p.x, 2.2, p.z), active:false
+    });
+  }
+  // Ensure last CP before finish exists
+  if(trackCheckpoints.length < 6){
+    // add more
+  }
+
+  // Start / finish banner at ctrl[0]
+  {
+    const p=trackPoints[0];
+    const w=hw*2.2, h=6.5;
+    const g=new THREE.Group();
+    const mat=new THREE.MeshStandardMaterial({color:0xff3355, metalness:0.3, roughness:0.45, emissive:0x661122, emissiveIntensity:0.5});
+    const postL=new THREE.Mesh(boxGeo, mat);
+    postL.scale.set(0.5,h,0.5); postL.position.set(-w/2,h/2,0); g.add(postL);
+    const postR=postL.clone(); postR.position.x=w/2; g.add(postR);
+    const bar=new THREE.Mesh(boxGeo, mat);
+    bar.scale.set(w+0.5,0.5,0.5); bar.position.set(0,h,0); g.add(bar);
+    // checkered finish plane
+    const cvs=document.createElement('canvas'); cvs.width=128; cvs.height=64;
+    const cg=cvs.getContext('2d');
+    for(let y=0;y<4;y++) for(let x=0;x<8;x++){
+      cg.fillStyle=((x+y)%2===0)?'#fff':'#111';
+      cg.fillRect(x*16,y*16,16,16);
+    }
+    const tex=new THREE.CanvasTexture(cvs);
+    const ban=new THREE.Mesh(planeGeo, new THREE.MeshBasicMaterial({map:tex, side:THREE.DoubleSide}));
+    ban.scale.set(w*0.95, 2.2, 1); ban.position.set(0, h-1.4, 0); g.add(ban);
+    // START grid markings
+    for(let row=0;row<2;row++){
+      for(let col=-1;col<=1;col++){
+        const sq=new THREE.Mesh(boxGeo, finishMat);
+        sq.scale.set(2.2, 0.05, 3.5);
+        sq.rotation.y=p.yaw;
+        const fx=Math.sin(p.yaw), fz=Math.cos(p.yaw);
+        const nx=-Math.cos(p.yaw), nz=Math.sin(p.yaw);
+        sq.position.set(p.x - fx*(8+row*5) + nx*col*4.5, 0.16, p.z - fz*(8+row*5) + nz*col*4.5);
+        trackGroup.add(sq);
+      }
+    }
+    g.position.set(p.x,0,p.z); g.rotation.y=p.yaw;
+    trackGroup.add(g);
+    // start facing along first segment (+X for our oval): yaw such that move dir matches
+    // movement: fx=-sin(yaw), fz=-cos(yaw). Want to go toward trackPoints[1].
+    const p1=trackPoints[1];
+    const wantYaw = Math.atan2(-(p1.x-p.x), -(p1.z-p.z));
+    race.startPos = {x:p.x - Math.sin(wantYaw)*(-6), y:0.95, z:p.z - Math.cos(wantYaw)*(-6), yaw:wantYaw};
+    // Actually place start slightly BEFORE finish line along reverse of travel
+    const back = 10;
+    race.startPos = {
+      x: p.x - (-Math.sin(wantYaw))*back,
+      y: 0.95,
+      z: p.z - (-Math.cos(wantYaw))*back,
+      yaw: wantYaw
+    };
+  }
+
+  // Boost pads
+  trackBoosts=[];
+  const boostIdx = [Math.floor(trackPoints.length*0.2), Math.floor(trackPoints.length*0.45), Math.floor(trackPoints.length*0.7), Math.floor(trackPoints.length*0.9)];
+  for(const bi of boostIdx){
+    const p=trackPoints[bi % trackPoints.length];
+    const pad=new THREE.Mesh(boxGeo, boostMat);
+    pad.scale.set(hw*1.5, 0.06, 7);
+    pad.rotation.y=p.yaw;
+    pad.position.set(p.x, 0.16, p.z);
+    trackGroup.add(pad);
+    for(let k=0;k<3;k++){
+      const ar=new THREE.Mesh(boxGeo, new THREE.MeshBasicMaterial({color:0xffffff, transparent:true, opacity:0.85}));
+      ar.scale.set(1.8, 0.05, 1.4);
+      ar.rotation.y=p.yaw;
+      const fwdX=Math.sin(p.yaw), fwdZ=Math.cos(p.yaw);
+      ar.position.set(p.x+fwdX*(k*2-2), 0.2, p.z+fwdZ*(k*2-2));
+      trackGroup.add(ar);
+    }
+    trackBoosts.push({x:p.x, z:p.z, r2:64, cool:0});
+  }
+
+  trackBuilt=true;
+  styleTrackCheckpoints();
+}
+
+function styleTrackCheckpoints(){
+  for(let i=0;i<trackCheckpoints.length;i++){
+    const cp=trackCheckpoints[i];
+    const on = race.active && i===race.cp;
+    cp.mesh.traverse(o=>{
+      if(o.isMesh && o.material && o.material.emissive){
+        o.material.emissiveIntensity = on ? 1.2 : 0.35;
+        if(o.material.color) o.material.color.setHex(on?0x66f0ff:0x3388aa);
+      }
+    });
+  }
+}
+
+function setRaceHudVisible(on){
+  if(raceHud) raceHud.style.display = on ? 'flex' : 'none';
+  if(scoreStat) scoreStat.style.display = on ? 'none' : 'block';
+  if(minimapWrap) minimapWrap.style.display = (on || mode==='free') ? 'block' : 'none';
+}
+
+function updateRaceHud(){
+  if(!race.active) return;
+  if(elLap) elLap.textContent = `${Math.min(race.lap, race.totalLaps)} / ${race.totalLaps}`;
+  if(elCp) elCp.textContent = `${Math.min(race.cp+1, trackCheckpoints.length)} / ${trackCheckpoints.length}`;
+  if(elTime) elTime.textContent = fmtTime(race.time);
+  const bk = bestTimes[race.key];
+  if(elBest) elBest.textContent = bk!=null ? fmtTime(bk) : '—';
+}
+
+function drawMinimap(){
+  if(!mmapCtx || !trackPoints.length) return;
+  const W=minimap.width, H=minimap.height;
+  mmapCtx.clearRect(0,0,W,H);
+  mmapCtx.fillStyle='rgba(8,14,28,0.2)';
+  mmapCtx.fillRect(0,0,W,H);
+  let minX=1e9,maxX=-1e9,minZ=1e9,maxZ=-1e9;
+  for(const p of trackPoints){ minX=Math.min(minX,p.x); maxX=Math.max(maxX,p.x); minZ=Math.min(minZ,p.z); maxZ=Math.max(maxZ,p.z); }
+  const pad=14;
+  const sx=(W-pad*2)/Math.max(1,maxX-minX), sz=(H-pad*2)/Math.max(1,maxZ-minZ);
+  const s=Math.min(sx,sz);
+  const ox=W/2 - (minX+maxX)*0.5*s;
+  const oz=H/2 - (minZ+maxZ)*0.5*s;
+  const tx=x=> x*s + ox;
+  const tz=z=> z*s + oz;
+  mmapCtx.strokeStyle='rgba(80,160,220,0.85)';
+  mmapCtx.lineWidth=3;
+  mmapCtx.beginPath();
+  for(let i=0;i<=trackPoints.length;i++){
+    const p=trackPoints[i%trackPoints.length];
+    if(i===0) mmapCtx.moveTo(tx(p.x), tz(p.z)); else mmapCtx.lineTo(tx(p.x), tz(p.z));
+  }
+  mmapCtx.stroke();
+  // next CP
+  if(race.active && trackCheckpoints[race.cp]){
+    const c=trackCheckpoints[race.cp];
+    mmapCtx.fillStyle='#7ef0ff';
+    mmapCtx.beginPath(); mmapCtx.arc(tx(c.x), tz(c.z), 4, 0, Math.PI*2); mmapCtx.fill();
+  }
+  // car
+  mmapCtx.fillStyle='#ffd76a';
+  mmapCtx.beginPath(); mmapCtx.arc(tx(carState.x), tz(carState.z), 4.5, 0, Math.PI*2); mmapCtx.fill();
+  const fx=-Math.sin(carState.yaw), fz=-Math.cos(carState.yaw);
+  mmapCtx.strokeStyle='#ffd76a';
+  mmapCtx.beginPath();
+  mmapCtx.moveTo(tx(carState.x), tz(carState.z));
+  mmapCtx.lineTo(tx(carState.x+fx*18), tz(carState.z+fz*18));
+  mmapCtx.stroke();
+}
+
+function startCountdown(cb){
+  race.countdown=3;
+  race._cdEnd = performance.now() + 3600; // wall-clock 3.6s regardless of FPS
+  race.racing=false;
+  race._cdCb=cb;
+  race._cdLast=-1;
+}
+
+function tickCountdown(dt){
+  if(!race._cdEnd) return false;
+  const left = (race._cdEnd - performance.now()) / 1000;
+  race.countdown = left;
+  if(left > 0){
+    const n=Math.ceil(left);
+    if(n!==race._cdLast && n>0 && n<=3){
+      race._cdLast=n;
+      if(countdownEl){ countdownEl.textContent=String(n); countdownEl.classList.add('show'); }
+      if(n===3) toast('准备发车', 500);
+    }
+    return true; // freeze
+  }
+  // GO
+  race._cdEnd = 0;
+  race.countdown=0;
+  race.racing=true;
+  if(countdownEl){ countdownEl.textContent='GO!'; countdownEl.classList.add('show');
+    setTimeout(()=>countdownEl.classList.remove('show'), 700);
+  }
+  toast('发车！', 1000);
+  if(race._cdCb) race._cdCb();
+  return false;
+}
+
+function beginTrackRace(m){
+  clearMissionObjects();
+  if(!trackBuilt) buildRaceTrack();
+  mode=m;
+  race.active=true; race.finished=false; race.wrongWay=false;
+  race.lap=1; race.cp=0; race.time=0; race.lapStart=0; race.lastGoodCp=0;
+  if(m==='track'){ race.totalLaps=3; race.key='track3'; }
+  else if(m==='timeattack'){ race.totalLaps=1; race.key='timeattack'; }
+  else if(m==='target'){
+    race.totalLaps=3; race.key='target3';
+    const best=bestTimes['track3'];
+    race.targetTime = best!=null ? best*1.08 : 180; // 8% over best or 3min default
+  }
+  const sp=race.startPos;
+  resetCar(sp.x, sp.y, sp.z, sp.yaw);
+  styleTrackCheckpoints();
+  setRaceHudVisible(true);
+  updateRaceHud();
+  mTitle.textContent = m==='timeattack'?'计时赛 · 1 圈' : m==='target'?'竞速挑战 · 目标成绩':'单人赛道 · 3 圈';
+  mDesc.textContent = m==='target'
+    ? `目标 ${fmtTime(race.targetTime)} · ${bestLabel('track3')}`
+    : `检查点 ${trackCheckpoints.length} · ${bestLabel(race.key)} · B 回检查点`;
+  missionBox.style.display='block';
+  startCountdown(()=>{ race.lapStart=0; });
+  toast(m==='timeattack'?'计时赛：跑完 1 圈':'贴地冲刺，跟随检查点！', 2000);
+}
+
+function respawnAtCheckpoint(){
+  if(!race.active) return;
+  let x,z,yaw;
+  if(race.cp<=0){
+    const sp=race.startPos; x=sp.x; z=sp.z; yaw=sp.yaw;
+  } else {
+    const c=trackCheckpoints[Math.max(0, race.cp-1)] || trackCheckpoints[0];
+    x=c.x; z=c.z; yaw=c.yaw;
+    // convert track yaw (atan2(dx,dz)) to movement yaw
+    // track forward is (sin(yaw), cos(yaw)); movement wants (-sin,-cos)=forward → movementYaw = yaw+PI? 
+    // want fx=-sin(my)=sin(ty), fz=-cos(my)=cos(ty) → -sin(my)=sin(ty) => my = -ty or my=PI-ty
+    // -cos(my)=cos(ty) => cos(my)=-cos(ty) => my = PI ± ty
+    yaw = Math.atan2(-Math.sin(c.yaw), -Math.cos(c.yaw)); // flip: face track forward
+    // Actually c.yaw = atan2(dx,dz) where forward=(dx,dz) normalized ≈ (sin(c.yaw), cos(c.yaw))
+    // movement forward = (-sin(my), -cos(my)). Set equal: -sin(my)=sin(c.yaw) => my=-c.yaw
+    // -cos(my)=cos(c.yaw) => cos(my)=-cos(c.yaw) => my=±PI + c.yaw... inconsistent with my=-c.yaw unless cos(-c.yaw)=-cos(c.yaw) which is false.
+    // Correct: my = c.yaw + Math.PI
+    // check: -sin(c.yaw+PI)= -(-sin(c.yaw))=sin(c.yaw) ✓
+    // -cos(c.yaw+PI)= -(-cos(c.yaw))=cos(c.yaw) ✓
+    yaw = c.yaw + Math.PI;
+  }
+  Object.assign(carState,{x,y:0.95,z,yaw,speed:0,vert:0,flying:false,steer:0});
+  car.position.set(x,0.95,z); car.rotation.set(0,yaw,0);
+  toast('已回到检查点', 1200);
+}
+
+function nearestTrackDist2(x,z){
+  let best=1e15;
+  for(const p of trackPoints){
+    const d=(p.x-x)*(p.x-x)+(p.z-z)*(p.z-z);
+    if(d<best) best=d;
+  }
+  return best;
+}
+
+function updateGuideArrow(){
+  if(!guideArrow || !race.active || !race.racing || race.finished){ if(guideArrow) guideArrow.classList.remove('show'); return; }
+  let tx,tz;
+  if(race.cp < trackCheckpoints.length){
+    const c=trackCheckpoints[race.cp]; tx=c.x; tz=c.z;
+  } else {
+    const p=trackPoints[0]; tx=p.x; tz=p.z;
+  }
+  const dx=tx-carState.x, dz=tz-carState.z;
+  const worldAng=Math.atan2(dx, dz);
+  // relative to camera/car facing
+  const rel = worldAng - carState.yaw;
+  // CSS arrow points up; rotate by -rel (screen)
+  const deg = -rel * 180 / Math.PI;
+  guideArrow.style.transform = `translateX(-50%) rotate(${deg}deg)`;
+  guideArrow.classList.add('show');
+}
+
+function updateTrackRace(dt){
+  if(!race.active || race.finished) return;
+  if(tickCountdown(dt)){
+    // freeze during countdown
+    carState.speed=0; carState.vert=0;
+    return;
+  }
+  if(!race.racing) return;
+  race.time += dt;
+  updateRaceHud();
+  updateGuideArrow();
+
+  // boost pads
+  for(const b of trackBoosts){
+    if(b.cool>0){ b.cool-=dt; continue; }
+    const d=(carState.x-b.x)*(carState.x-b.x)+(carState.z-b.z)*(carState.z-b.z);
+    if(d<b.r2 && carState.y<4){
+      carState.speed = Math.min(72, carState.speed + 18);
+      b.cool=2.5;
+      toast('加速带！', 800);
+    }
+  }
+
+  // wrong-way: facing away from next target
+  let tx,tz;
+  if(race.cp < trackCheckpoints.length){ tx=trackCheckpoints[race.cp].x; tz=trackCheckpoints[race.cp].z; }
+  else { tx=trackPoints[0].x; tz=trackPoints[0].z; }
+  const toX=tx-carState.x, toZ=tz-carState.z;
+  const fx=-Math.sin(carState.yaw), fz=-Math.cos(carState.yaw);
+  const dot = fx*toX + fz*toZ;
+  const spd = Math.abs(carState.speed);
+  race.wrongWay = spd>6 && dot < -8;
+  if(wrongWayEl) wrongWayEl.style.display = race.wrongWay ? 'block' : 'none';
+
+  // off-track respawn aid
+  if(nearestTrackDist2(carState.x, carState.z) > (TRACK_HALF_W+28)*(TRACK_HALF_W+28) && carState.y<8){
+    // soft hint only; auto-respawn if very far
+    if(nearestTrackDist2(carState.x, carState.z) > 90*90){
+      respawnAtCheckpoint();
+    }
+  }
+
+  // checkpoint hit
+  const hitR2 = 85; // ~9.2m
+  if(race.cp < trackCheckpoints.length){
+    const c=trackCheckpoints[race.cp];
+    const d=(carState.x-c.x)*(carState.x-c.x)+(carState.z-c.z)*(carState.z-c.z);
+    if(d<hitR2 && carState.y<12){
+      race.cp++;
+      race.lastGoodCp=race.cp;
+      score+=50; elScore.textContent=score;
+      styleTrackCheckpoints();
+      toast(`检查点 ${race.cp}/${trackCheckpoints.length}`, 900);
+      mDesc.textContent=`第 ${race.lap} 圈 · 检查点 ${race.cp}/${trackCheckpoints.length} · ${fmtTime(race.time)}`;
+    }
+  } else {
+    // need finish line (trackPoints[0])
+    const p=trackPoints[0];
+    const d=(carState.x-p.x)*(carState.x-p.x)+(carState.z-p.z)*(carState.z-p.z);
+    if(d<110 && carState.y<12){
+      // completed a lap
+      const lapTime = race.time - race.lapStart;
+      race.lapStart = race.time;
+      if(race.bestLap==null || lapTime<race.bestLap) race.bestLap=lapTime;
+      if(race.lap >= race.totalLaps){
+        // finish
+        race.finished=true; race.racing=false; missionDone=true;
+        const total=race.time;
+        let ok=true;
+        if(mode==='target' && total>race.targetTime){
+          ok=false; missionFailed=true;
+          mTitle.textContent='未达目标';
+          mDesc.textContent=`用时 ${fmtTime(total)} · 目标 ${fmtTime(race.targetTime)}`;
+          toast('再快一点！', 2200);
+        } else {
+          const pb=saveBest(race.key, total);
+          if(mode==='track') saveBest('track3', total);
+          mTitle.textContent='冲线！';
+          mDesc.textContent=`总成绩 ${fmtTime(total)}`+(race.bestLap!=null?` · 最快圈 ${fmtTime(race.bestLap)}`:'')+(pb?' · 新纪录！':' · '+bestLabel(race.key));
+          toast(pb?('新纪录！'+fmtTime(total)):'完赛 '+fmtTime(total), 2600);
+          score+=500; elScore.textContent=score;
+        }
+        if(guideArrow) guideArrow.classList.remove('show');
+        if(wrongWayEl) wrongWayEl.style.display='none';
+        updateRaceHud();
+      } else {
+        race.lap++;
+        race.cp=0;
+        styleTrackCheckpoints();
+        toast(`第 ${race.lap} 圈！`, 1400);
+        mDesc.textContent=`第 ${race.lap}/${race.totalLaps} 圈开始`;
+      }
+    }
+  }
+}
+
 function updateMission(dt){
+  if(mode==='track'||mode==='timeattack'||mode==='target'){
+    updateTrackRace(dt);
+    return;
+  }
   if(missionDone||missionFailed) return;
   if(missionLimit>0){
     missionElapsed+=dt;
@@ -1688,6 +2272,8 @@ function updateMission(dt){
   }
 }
 
+
+
 function updateTaxis(dt){
   const lim=CITY*0.85;
   for(const t of taxis){
@@ -1727,7 +2313,17 @@ function resolveCollisions(){
 
 function updateCar(dt){
   readKeys();
-  const maxSpeed=52, accel=28, brakeForce=40, fric=8;
+  const onTrack = race.active && race.racing;
+  const maxSpeed= onTrack ? 68 : 52;
+  const accel= onTrack ? 36 : 28;
+  const brakeForce=44, fric= onTrack ? 6.5 : 8;
+  // freeze during countdown
+  if(race.active && race.countdown>0){
+    carState.speed=0; carState.vert=0;
+    car.position.set(carState.x,carState.y,carState.z);
+    car.rotation.y=carState.yaw;
+    return;
+  }
   if(input.throttle) carState.speed += accel*dt*(carState.speed<0?1.4:1);
   if(input.brake){
     if(carState.speed>0.8) carState.speed-=brakeForce*dt;
@@ -1737,8 +2333,8 @@ function updateCar(dt){
     if(carState.speed>0) carState.speed=Math.max(0,carState.speed-fric*dt);
     else if(carState.speed<0) carState.speed=Math.min(0,carState.speed+fric*dt);
   }
-  carState.speed=THREE.MathUtils.clamp(carState.speed,-16,maxSpeed);
-  const steerEff=input.steer*2.0*Math.min(1,Math.abs(carState.speed)/8);
+  carState.speed=THREE.MathUtils.clamp(carState.speed,-16, onTrack?78:maxSpeed);
+  const steerEff=input.steer*(onTrack?2.35:2.0)*Math.min(1,Math.abs(carState.speed)/8);
   if(Math.abs(carState.speed)>0.3) carState.yaw+=steerEff*dt*Math.sign(carState.speed||1);
   carState.steer += (input.steer*0.45-carState.steer)*(1-Math.pow(0.01,dt));
 
@@ -1789,45 +2385,56 @@ function startMode(m){
   playing=true; paused=false; pauseOverlay.classList.remove('show');
   clearMissionObjects();
   missionBox.style.display='block';
-  if(m==='free'){
-    resetCar();
+  if(m==='track' || m==='timeattack' || m==='target'){
+    beginTrackRace(m);
+  } else if(m==='free'){
+    setRaceHudVisible(false);
+    if(minimapWrap) minimapWrap.style.display='block';
+    resetCar(race.startPos?.x||0, 0.95, race.startPos?.z||24, race.startPos?.yaw||0);
     mTitle.textContent='自由驾驶 · Free Drive';
-    mDesc.textContent='Central Park 起飞 · 空格飞行 · 撞楼弹开'; toast('自由驾驶 · Central Park');
+    mDesc.textContent='整座城可飞 · 赛道可见 · 空格飞行'; toast('自由驾驶');
   } else if(m==='rings'){
+    setRaceHudVisible(false); if(minimapWrap) minimapWrap.style.display='none';
     resetCar();
     spawnRings(); ringStartTime=performance.now();
     mTitle.textContent='霓虹环竞速';
     mDesc.textContent=`环门 1 / ${rings.length}`; toast('穿过发光环门！');
   } else if(m==='coins'){
+    setRaceHudVisible(false); if(minimapWrap) minimapWrap.style.display='none';
     resetCar();
     spawnCoins();
     mTitle.textContent='金币寻宝';
     mDesc.textContent=`剩余金币 ${coins.length}`; toast('收集漂浮金币！');
   } else if(m==='sbend'){
+    setRaceHudVisible(false); if(minimapWrap) minimapWrap.style.display='none';
     spawnSBend();
-    resetCar(0,0.95,58,0); // face -Z into S-curve
+    resetCar(0,0.95,58,0);
     mTitle.textContent='十秒 S 弯 · 10s S-Curve';
     mDesc.textContent=`倒计时 10.0s · 弯门 1/${gates.length} · ${bestLabel('sbend')}`;
     toast('10 秒内穿过全部 S 弯门！', 2200);
   } else if(m==='rooftop'){
+    setRaceHudVisible(false); if(minimapWrap) minimapWrap.style.display='none';
     spawnRooftop();
     resetCar(0,0.95,30, Math.PI*0.25);
     mTitle.textContent='限时穿城 · Rooftop Rush';
     mDesc.textContent=`剩余 40s · 飞向东北停机坪 · ${bestLabel('rooftop')}`;
     toast('40 秒内飞到屋顶停机坪！', 2200);
   } else if(m==='lowgate'){
+    setRaceHudVisible(false); if(minimapWrap) minimapWrap.style.display='none';
     spawnLowGates();
     resetCar(0,0.95,52,0);
     mTitle.textContent='低空穿桥 · Low Gates';
     mDesc.textContent=`剩余 55s · 门 1/${gates.length} · 限高 ${altLimit-1}m`;
     toast('保持低空，依次穿门！', 2200);
   } else if(m==='cones'){
+    setRaceHudVisible(false); if(minimapWrap) minimapWrap.style.display='none';
     spawnCones();
     resetCar(0,0.95,58,0);
     mTitle.textContent='漂移绕桶 · Cone Slalom';
     mDesc.textContent=`剩余 35s · 绕桶 1/${gates.length} · ${bestLabel('cones')}`;
     toast('左右绕桶，别撞飞！', 2200);
   } else {
+    setRaceHudVisible(false);
     resetCar();
     mTitle.textContent='自由驾驶';
     mDesc.textContent='—';
@@ -1837,6 +2444,10 @@ function backToMenu(){
   playing=false; paused=false; pauseOverlay.classList.remove('show');
   menuEl.classList.remove('hidden'); menuBtn.style.display='none'; qualBtn.style.display='none';
   missionBox.style.display='none'; clearMissionObjects();
+  setRaceHudVisible(false);
+  if(minimapWrap) minimapWrap.style.display='none';
+  if(guideArrow) guideArrow.classList.remove('show');
+  if(wrongWayEl) wrongWayEl.style.display='none';
 }
 function togglePause(){ if(!playing) return; paused=!paused; pauseOverlay.classList.toggle('show',paused); }
 
@@ -1871,14 +2482,16 @@ function tick(now){
   if(playing && !paused){
     updateCar(dt);
     updateMission(dt);
-    updateTaxis(dt);
+    if(!(race.active && race.racing)) updateTaxis(dt);
     updateCamera(dt);
     hudAcc+=dt;
     if(hudAcc>0.1){
       hudAcc=0;
       elSpd.textContent=(Math.abs(carState.speed)*3.6)|0;
       elAlt.textContent=Math.max(0,(carState.y-0.95)|0);
-      speedFill.style.width=Math.min(100,(Math.abs(carState.speed)/52)*100)+'%';
+      const vmax = (race.active&&race.racing)?78:52;
+      speedFill.style.width=Math.min(100,(Math.abs(carState.speed)/vmax)*100)+'%';
+      if(minimapWrap && minimapWrap.style.display!=='none') drawMinimap();
     }
   } else if(!playing){
     const t=now*0.00012;
@@ -1962,7 +2575,8 @@ async function loadGameAssets(){
   setLoad(100, '完成');
   hideLoader();
   if(new URLSearchParams(location.search).has('debug')){
-    window.__fcc={carUsesGLB, kenney:kenneyTemplates.length, carChildren:car.children.length, env:!!envRT, pbr:!!pbrFacade};
+    window.__fcc={carUsesGLB, kenney:kenneyTemplates.length, carChildren:car.children.length, env:!!envRT, pbr:!!pbrFacade, trackPts:trackPoints.length, cps:trackCheckpoints.length};
+    window.__race=race;
     console.log('FCC', window.__fcc);
   }
 }
@@ -1978,7 +2592,7 @@ async function loadGameAssets(){
   }
   try{
     const q=new URLSearchParams(location.search).get('mode');
-    const ok=['free','rings','coins','sbend','rooftop','lowgate','cones'];
+    const ok=['track','timeattack','target','free','rings','coins','sbend','rooftop','lowgate','cones'];
     if(ok.includes(q)) setTimeout(()=>startMode(q),150);
   }catch(e){}
 })();
