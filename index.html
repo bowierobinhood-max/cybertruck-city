@@ -83,12 +83,12 @@ html,body{width:100%;height:100%;overflow:hidden;background:#05070c;font-family:
   <div id="menu" class="panel">
     <div class="card">
       <h1>飞车都市</h1>
-      <p class="sub">驾驶特斯拉赛博卡车（带 Tesla 标）穿梭美式都市：Central Park 起飞，Downtown 摩天楼与 Harbor 天际线。可调画质保帧数。</p>
+      <p class="sub">特斯拉赛博卡车（带 Tesla 标）开放都市：更密楼群、沥青大道、天空与光照。画质可调保帧数——不是真 GTA，但比方块城丰富得多。</p>
       <div class="quality" id="qualityRow">
         <span>画质</span>
         <button type="button" data-q="high">高</button>
-        <button type="button" data-q="med">中</button>
-        <button type="button" data-q="low" class="on">低</button>
+        <button type="button" data-q="med" class="on">中</button>
+        <button type="button" data-q="low">低</button>
       </div>
       <div class="modes">
         <button type="button" data-mode="free">自由驾驶<span>Explore the city · 练习飞行与穿楼</span></button>
@@ -141,12 +141,12 @@ function toast(msg, ms=1800){
 }
 
 const QUAL = {
-  high: { pr:1.5, shadows:true, shadowSize:512, far:800, fogN:0.0011, fogD:0.0007, blocks:4, extraTowers:6, lamps:true, antialias:true, treeCount:5, coins:20, headlight:true, tone:2, taxis:6, signs:4 },
-  med:  { pr:1, shadows:false, shadowSize:256, far:560, fogN:0.0016, fogD:0.0009, blocks:3, extraTowers:4, lamps:true, antialias:false, treeCount:3, coins:14, headlight:false, tone:1, taxis:3, signs:3 },
-  low:  { pr:1, shadows:false, shadowSize:256, far:420, fogN:0.0022, fogD:0.0013, blocks:2, extraTowers:2, lamps:false, antialias:false, treeCount:1, coins:10, headlight:false, tone:0, taxis:0, signs:2 },
+  high: { pr:1.5, shadows:true, shadowSize:1024, far:920, fogN:0.00085, fogD:0.00055, blocks:5, perBlock:4, extraTowers:12, lamps:true, streetLamps:true, lampLights:8, antialias:true, treeCount:14, coins:22, headlight:true, tone:2, taxis:10, signs:5, sidewalks:true, parked:18, traffic:true },
+  med:  { pr:1, shadows:false, shadowSize:512, far:640, fogN:0.00125, fogD:0.0008, blocks:4, perBlock:3, extraTowers:8, lamps:true, streetLamps:true, lampLights:0, antialias:false, treeCount:8, coins:16, headlight:false, tone:2, taxis:6, signs:4, sidewalks:true, parked:10, traffic:true },
+  low:  { pr:1, shadows:false, shadowSize:256, far:460, fogN:0.0018, fogD:0.00115, blocks:3, perBlock:2, extraTowers:4, lamps:true, streetLamps:false, lampLights:0, antialias:false, treeCount:4, coins:10, headlight:false, tone:1, taxis:2, signs:3, sidewalks:false, parked:4, traffic:false },
 };
-let quality = localStorage.getItem('fcc_quality') || 'low';
-if(!QUAL[quality]) quality = 'low';
+let quality = localStorage.getItem('fcc_quality') || 'med';
+if(!QUAL[quality]) quality = 'med';
 
 const renderer = new THREE.WebGLRenderer({
   canvas, antialias: QUAL[quality].antialias, powerPreference:'high-performance',
@@ -154,36 +154,50 @@ const renderer = new THREE.WebGLRenderer({
 });
 renderer.setClearColor(0x0a1220, 1);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.toneMapping = THREE.NoToneMapping;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
 renderer.shadowMap.enabled = false;
-renderer.shadowMap.type = THREE.BasicShadowMap;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0a1220);
-scene.fog = new THREE.FogExp2(0x0a1220, 0.0014);
+scene.fog = new THREE.FogExp2(0x0a1220, 0.0012);
 
-const camera = new THREE.PerspectiveCamera(55, innerWidth/innerHeight, 0.8, QUAL[quality].far);
+const camera = new THREE.PerspectiveCamera(58, innerWidth/innerHeight, 0.8, QUAL[quality].far);
 
-const hemi = new THREE.HemisphereLight(0x8eb6ff, 0x1a2030, 0.6);
+const hemi = new THREE.HemisphereLight(0x9ec4ff, 0x2a2030, 0.7);
 scene.add(hemi);
-const sun = new THREE.DirectionalLight(0xffe2b8, 0.9);
-sun.position.set(120, 220, 60);
+const sun = new THREE.DirectionalLight(0xffe2b8, 1.05);
+sun.position.set(160, 260, 80);
 sun.castShadow = false;
 scene.add(sun);
-const amb = new THREE.AmbientLight(0x223355, 0.28);
+const amb = new THREE.AmbientLight(0x334466, 0.32);
 scene.add(amb);
+const fill = new THREE.DirectionalLight(0x88aacc, 0.25);
+fill.position.set(-80, 60, -40);
+scene.add(fill);
 
 let isNight = true;
 
-/* Wider US avenues */
-const CITY = 520;
-const BLOCK = 88;
-const ROAD_W = 26;      // avenue width
-const SIDE_ROAD = 18;
+/* Wider denser US city */
+const CITY = 560;
+const BLOCK = 72;
+const ROAD_W = 22;
+const SIDE_ROAD = 16;
+const SIDEWALK = 4.5;
+
+function noise(g,w,h,alpha=28){
+  const img=g.getImageData(0,0,w,h); const d=img.data;
+  for(let i=0;i<d.length;i+=4){
+    const n=(Math.random()*2-1)*alpha;
+    d[i]=Math.max(0,Math.min(255,d[i]+n));
+    d[i+1]=Math.max(0,Math.min(255,d[i+1]+n));
+    d[i+2]=Math.max(0,Math.min(255,d[i+2]+n));
+  }
+  g.putImageData(img,0,0);
+}
 
 function makeWindowTexture(night, size, style){
-  // style: 'glass' | 'brick'
   const w = size, h = size*2;
   const c = document.createElement('canvas');
   c.width=w; c.height=h;
@@ -191,20 +205,29 @@ function makeWindowTexture(night, size, style){
   if(style==='brick'){
     g.fillStyle = night ? '#3a2a24' : '#8b5a44';
     g.fillRect(0,0,w,h);
-    const cols=4, rows=8, cw=w/cols, rh=h/rows;
-    for(let y=0;y<rows;y++) for(let x=0;x<cols;x++){
-      const lit = night ? Math.random()>0.35 : Math.random()>0.9;
-      g.fillStyle = lit ? (Math.random()>0.5?'#f0d080':'#ffe8a0') : (night?'#2a1e18':'#6e4534');
-      g.fillRect(x*cw+1, y*rh+2, cw-2, rh-4);
+    // mortar lines
+    g.strokeStyle = night ? '#2a1c16' : '#6e4534';
+    g.lineWidth=1;
+    const cols=5, rows=10, cw=w/cols, rh=h/rows;
+    for(let y=0;y<rows;y++){
+      for(let x=0;x<cols;x++){
+        const ox=(y%2)*(cw*0.5);
+        const lit = night ? Math.random()>0.32 : Math.random()>0.88;
+        g.fillStyle = lit ? (Math.random()>0.5?'#f0d080':'#ffe8a0') : (night?'#2a1e18':'#7a5040');
+        g.fillRect(x*cw+ox+1, y*rh+2, cw-2, rh-4);
+      }
     }
   } else {
-    g.fillStyle = night ? '#1a2838' : '#4a6070';
+    g.fillStyle = night ? '#152030' : '#5a7080';
     g.fillRect(0,0,w,h);
-    const cols=night?6:5, rows=night?12:10, cw=w/cols, rh=h/rows;
+    // curtain wall mullions
+    g.strokeStyle = night ? '#0a1018' : '#3a4c58';
+    g.lineWidth=1;
+    const cols=night?7:6, rows=night?14:12, cw=w/cols, rh=h/rows;
     for(let y=0;y<rows;y++) for(let x=0;x<cols;x++){
-      const lit = night ? Math.random()>0.22 : Math.random()>0.85;
-      if(!lit) g.fillStyle = night?'#0c1520':'#3a4c58';
-      else g.fillStyle = Math.random()>0.55 ? '#e8c070' : '#a8d0f0';
+      const lit = night ? Math.random()>0.2 : Math.random()>0.82;
+      if(!lit) g.fillStyle = night?'#0a121c':'#455868';
+      else g.fillStyle = Math.random()>0.55 ? '#e8c070' : (Math.random()>0.5?'#a8d0f0':'#d0e8ff');
       g.fillRect(x*cw+1,y*rh+1,cw-2,rh-2);
     }
   }
@@ -212,8 +235,72 @@ function makeWindowTexture(night, size, style){
   tex.colorSpace=THREE.SRGBColorSpace;
   tex.wrapS=tex.wrapT=THREE.RepeatWrapping;
   tex.magFilter=THREE.NearestFilter;
+  tex.minFilter=THREE.LinearMipmapLinearFilter;
+  tex.generateMipmaps=true;
+  return tex;
+}
+
+function makeAsphaltTex(){
+  const c=document.createElement('canvas'); c.width=128; c.height=128;
+  const g=c.getContext('2d');
+  g.fillStyle='#1c2128'; g.fillRect(0,0,128,128);
+  noise(g,128,128,18);
+  // faint tar seams
+  g.strokeStyle='#151920'; g.lineWidth=2;
+  for(let i=0;i<6;i++){ g.beginPath(); g.moveTo(0,i*22+Math.random()*8); g.lineTo(128,i*22+Math.random()*8); g.stroke(); }
+  const tex=new THREE.CanvasTexture(c);
+  tex.colorSpace=THREE.SRGBColorSpace;
+  tex.wrapS=tex.wrapT=THREE.RepeatWrapping;
+  tex.repeat.set(8,8);
+  return tex;
+}
+
+function makeSidewalkTex(){
+  const c=document.createElement('canvas'); c.width=64; c.height=64;
+  const g=c.getContext('2d');
+  g.fillStyle='#6a6e74'; g.fillRect(0,0,64,64);
+  g.strokeStyle='#555860'; g.lineWidth=1;
+  for(let i=0;i<=4;i++){ g.beginPath(); g.moveTo(i*16,0); g.lineTo(i*16,64); g.stroke();
+    g.beginPath(); g.moveTo(0,i*16); g.lineTo(64,i*16); g.stroke(); }
+  noise(g,64,64,12);
+  const tex=new THREE.CanvasTexture(c);
+  tex.colorSpace=THREE.SRGBColorSpace;
+  tex.wrapS=tex.wrapT=THREE.RepeatWrapping;
+  tex.repeat.set(2,2);
+  return tex;
+}
+
+function makeSkyTex(night){
+  const c=document.createElement('canvas'); c.width=8; c.height=512;
+  const g=c.getContext('2d');
+  const grd=g.createLinearGradient(0,0,0,512);
+  if(night){
+    grd.addColorStop(0,'#010308');
+    grd.addColorStop(0.35,'#071028');
+    grd.addColorStop(0.55,'#121e38');
+    grd.addColorStop(0.78,'#1c2438');
+    grd.addColorStop(1,'#2a2230');
+  } else {
+    grd.addColorStop(0,'#2a6cb8');
+    grd.addColorStop(0.35,'#5a9ad0');
+    grd.addColorStop(0.55,'#8ebfe0');
+    grd.addColorStop(0.78,'#c8dde8');
+    grd.addColorStop(1,'#e8d8c0');
+  }
+  g.fillStyle=grd; g.fillRect(0,0,8,512);
+  if(night){
+    g.fillStyle='#ffffff';
+    for(let i=0;i<80;i++){
+      const x=Math.random()*8, y=Math.random()*280, r=Math.random()*1.2;
+      g.globalAlpha=0.3+Math.random()*0.7;
+      g.fillRect(x,y,r,r);
+    }
+    g.globalAlpha=1;
+  }
+  const tex=new THREE.CanvasTexture(c);
+  tex.colorSpace=THREE.SRGBColorSpace;
+  tex.magFilter=THREE.LinearFilter;
   tex.minFilter=THREE.LinearFilter;
-  tex.generateMipmaps=false;
   return tex;
 }
 
@@ -237,36 +324,48 @@ function makeSignTexture(text, bg, fg){
 let dayGlass, nightGlass, dayBrick, nightBrick;
 let buildingMatGlass, buildingMatBrick;
 let buildingMeshGlass, buildingMeshBrick;
+let asphaltTex, sidewalkTex, skyDayTex, skyNightTex;
 const colliders = [];
 const dummy = new THREE.Object3D();
+const streetLampLights = [];
 
-const groundMat = new THREE.MeshLambertMaterial({color:0x2e3540});
-const roadMat = new THREE.MeshLambertMaterial({color:0x1a1e26});
-const parkMat = new THREE.MeshLambertMaterial({color:0x2f6b3e});
-const lineMat = new THREE.MeshBasicMaterial({color:0xd8c060}); // US yellow lane feel
-const crosswalkMat = new THREE.MeshBasicMaterial({color:0xd0d4dc});
-const lampPoleMat = new THREE.MeshLambertMaterial({color:0x2a2a2a});
+const groundMat = new THREE.MeshStandardMaterial({color:0x3a424c, metalness:0.05, roughness:0.95});
+const roadMat = new THREE.MeshStandardMaterial({color:0xffffff, metalness:0.05, roughness:0.88});
+const sidewalkMat = new THREE.MeshStandardMaterial({color:0xffffff, metalness:0.02, roughness:0.9});
+const parkMat = new THREE.MeshStandardMaterial({color:0x2f6b3e, metalness:0.0, roughness:0.92});
+const lineMat = new THREE.MeshBasicMaterial({color:0xd8c060});
+const whiteLineMat = new THREE.MeshBasicMaterial({color:0xd8dce0});
+const crosswalkMat = new THREE.MeshBasicMaterial({color:0xe8ecf0});
+const lampPoleMat = new THREE.MeshStandardMaterial({color:0x2a2a2a, metalness:0.6, roughness:0.45});
 const lampHeadMat = new THREE.MeshBasicMaterial({color:0xffe0a0});
-const treeMat = new THREE.MeshLambertMaterial({color:0x1f6b3a});
-const trunkMat = new THREE.MeshLambertMaterial({color:0x4a3020});
-const waterMat = new THREE.MeshLambertMaterial({color:0x3a7aaa});
-const taxiMat = new THREE.MeshLambertMaterial({color:0xf5c400});
-const taxiDark = new THREE.MeshLambertMaterial({color:0x222222});
+const treeMat = new THREE.MeshStandardMaterial({color:0x1f6b3a, metalness:0, roughness:0.9});
+const trunkMat = new THREE.MeshStandardMaterial({color:0x4a3020, metalness:0, roughness:0.95});
+const waterMat = new THREE.MeshStandardMaterial({color:0x3a7aaa, metalness:0.35, roughness:0.25});
+const taxiMat = new THREE.MeshStandardMaterial({color:0xf5c400, metalness:0.35, roughness:0.45});
+const taxiDark = new THREE.MeshStandardMaterial({color:0x222222, metalness:0.2, roughness:0.7});
+const curbMat = new THREE.MeshStandardMaterial({color:0x8a8e94, metalness:0.05, roughness:0.85});
 
 const boxGeo = new THREE.BoxGeometry(1,1,1);
 const planeGeo = new THREE.PlaneGeometry(1,1);
 const cylGeo = new THREE.CylinderGeometry(0.5,0.5,1,6);
 const sphereGeo = new THREE.SphereGeometry(0.5,6,4);
-const wheelGeoCT = new THREE.CylinderGeometry(0.5,0.5,1,8); // geometric Cybertruck-ish
+const wheelGeoCT = new THREE.CylinderGeometry(0.5,0.5,1,8);
 
-const ground = new THREE.Mesh(new THREE.PlaneGeometry(CITY*2.2, CITY*2.2), groundMat);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(CITY*2.4, CITY*2.4), groundMat);
 ground.rotation.x = -Math.PI/2;
+ground.receiveShadow = true;
 scene.add(ground);
+
+/* Sky dome */
+const skyMat = new THREE.MeshBasicMaterial({side:THREE.BackSide, depthWrite:false, fog:false});
+const sky = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16), skyMat);
+sky.scale.setScalar(CITY * 1.55);
+scene.add(sky);
 
 const cityRoot = new THREE.Group();
 scene.add(cityRoot);
 const lampHeads = [];
-const taxis = []; // {mesh, x,z, yaw, speed, lane}
+const taxis = [];
 
 function clearCity(){
   while(cityRoot.children.length){
@@ -276,6 +375,8 @@ function clearCity(){
       try{ o.geometry.dispose(); }catch(e){}
     }
   }
+  for(const L of streetLampLights){ scene.remove(L); try{L.dispose();}catch(e){} }
+  streetLampLights.length=0;
   colliders.length=0; lampHeads.length=0; taxis.length=0;
   buildingMeshGlass=buildingMeshBrick=null;
 }
@@ -292,9 +393,15 @@ function addBillboard(x,y,z, yaw, tex){
   m.position.set(x,y,z);
   m.rotation.y=yaw;
   cityRoot.add(m);
-  // pole
   const pole=new THREE.Mesh(cylGeo, lampPoleMat);
   pole.scale.set(0.5,y,0.5); pole.position.set(x,y*0.5,z); cityRoot.add(pole);
+}
+
+function roadPlane(x,z,w,d, mat, y=0.04){
+  const m=new THREE.Mesh(planeGeo, mat);
+  m.scale.set(w,d,1); m.rotation.x=-Math.PI/2; m.position.set(x,y,z);
+  m.receiveShadow=true; cityRoot.add(m);
+  return m;
 }
 
 function buildCity(q){
@@ -303,94 +410,140 @@ function buildCity(q){
   const glassBuilds = [];
   const brickBuilds = [];
 
+  if(asphaltTex) roadMat.map = asphaltTex;
+  if(sidewalkTex) sidewalkMat.map = sidewalkTex;
+  roadMat.needsUpdate = true; sidewalkMat.needsUpdate = true;
+
   /* —— Central Park —— */
   const park = new THREE.Mesh(planeGeo, parkMat);
-  park.scale.set(110,110,1);
+  park.scale.set(100,100,1);
   park.rotation.x = -Math.PI/2;
   park.position.set(0,0.05,0);
+  park.receiveShadow=true;
   cityRoot.add(park);
 
-  // fountain
-  const fountainBase=new THREE.Mesh(cylGeo, new THREE.MeshLambertMaterial({color:0x9aa3b0}));
+  const pathRing=new THREE.Mesh(new THREE.RingGeometry(22,26,24), new THREE.MeshStandardMaterial({color:0x6a5a48, roughness:0.95, metalness:0}));
+  pathRing.rotation.x=-Math.PI/2; pathRing.position.y=0.06; cityRoot.add(pathRing);
+
+  const fountainBase=new THREE.Mesh(cylGeo, new THREE.MeshStandardMaterial({color:0x9aa3b0, metalness:0.3, roughness:0.5}));
   fountainBase.scale.set(8,1.2,8); fountainBase.position.set(0,0.6,0); cityRoot.add(fountainBase);
   const pool=new THREE.Mesh(cylGeo, waterMat);
   pool.scale.set(6.5,0.4,6.5); pool.position.set(0,1.1,0); cityRoot.add(pool);
-  const spout=new THREE.Mesh(cylGeo, new THREE.MeshLambertMaterial({color:0xb0b8c4}));
+  const spout=new THREE.Mesh(cylGeo, new THREE.MeshStandardMaterial({color:0xb0b8c4, metalness:0.4, roughness:0.4}));
   spout.scale.set(0.8,3.5,0.8); spout.position.set(0,2.5,0); cityRoot.add(spout);
 
   for(let i=0;i<q.treeCount;i++){
-    const a=Math.random()*Math.PI*2, r=18+Math.random()*32;
+    const a=Math.random()*Math.PI*2, r=16+Math.random()*30;
     const tx=Math.cos(a)*r, tz=Math.sin(a)*r;
     const trunk=new THREE.Mesh(cylGeo, trunkMat);
-    trunk.scale.set(0.7,3,0.7); trunk.position.set(tx,1.5,tz); cityRoot.add(trunk);
+    trunk.scale.set(0.7,3+Math.random(),0.7); trunk.position.set(tx,1.5,tz); trunk.castShadow=q.shadows; cityRoot.add(trunk);
     const crown=new THREE.Mesh(sphereGeo, treeMat);
-    crown.scale.set(4.2,4.2,4.2); crown.position.set(tx,4,tz); cityRoot.add(crown);
+    const s=3.8+Math.random()*1.4;
+    crown.scale.set(s,s,s); crown.position.set(tx,4.2,tz); crown.castShadow=q.shadows; cityRoot.add(crown);
   }
 
-  /* —— Wide avenue grid —— */
-  function road(x,z,w,d){
-    const m=new THREE.Mesh(planeGeo, roadMat);
-    m.scale.set(w,d,1); m.rotation.x=-Math.PI/2; m.position.set(x,0.04,z); cityRoot.add(m);
-  }
-  // Broadway-ish main N-S + E-W avenues
-  road(0,0,ROAD_W, CITY*1.7);
-  road(0,0,CITY*1.7, ROAD_W);
+  /* —— Avenue grid + sidewalks —— */
+  const span = CITY * 1.55;
+  roadPlane(0,0,ROAD_W, span, roadMat);
+  roadPlane(0,0,span, ROAD_W, roadMat);
   for(let i=-half;i<=half;i++){
     if(i===0) continue;
     const c=i*BLOCK;
-    road(c,0,SIDE_ROAD, CITY*1.3);
-    road(0,c,CITY*1.3, SIDE_ROAD);
-  }
-  // yellow dashed lanes on main avenues
-  for(let t=-CITY*0.75;t<CITY*0.75;t+=22){
-    const ln=new THREE.Mesh(planeGeo, lineMat);
-    ln.scale.set(1.2,4,1); ln.rotation.x=-Math.PI/2; ln.position.set(0,0.06,t); cityRoot.add(ln);
-    const ln2=new THREE.Mesh(planeGeo, lineMat);
-    ln2.scale.set(4,1.2,1); ln2.rotation.x=-Math.PI/2; ln2.position.set(t,0.06,0); cityRoot.add(ln2);
-  }
-  // crosswalks near park
-  for(const [x,z,sx,sz] of [[0,58,ROAD_W,3],[0,-58,ROAD_W,3],[58,0,3,ROAD_W],[-58,0,3,ROAD_W]]){
-    const cw=new THREE.Mesh(planeGeo, crosswalkMat);
-    cw.scale.set(sx,sz,1); cw.rotation.x=-Math.PI/2; cw.position.set(x,0.07,z); cityRoot.add(cw);
+    roadPlane(c,0,SIDE_ROAD, span*0.85, roadMat);
+    roadPlane(0,c,span*0.85, SIDE_ROAD, roadMat);
   }
 
-  /* —— Buildings: brick midrise + glass towers —— */
+  if(q.sidewalks){
+    // sidewalks flanking main avenues
+    const sw = SIDEWALK;
+    for(const ox of [ROAD_W*0.5+sw*0.5, -(ROAD_W*0.5+sw*0.5)]){
+      roadPlane(ox, 0, sw, span*0.9, sidewalkMat, 0.055);
+      roadPlane(0, ox, span*0.9, sw, sidewalkMat, 0.055);
+    }
+    for(let i=-half;i<=half;i++){
+      if(i===0) continue;
+      const c=i*BLOCK;
+      for(const ox of [SIDE_ROAD*0.5+sw*0.5, -(SIDE_ROAD*0.5+sw*0.5)]){
+        roadPlane(c+ox, 0, sw, span*0.7, sidewalkMat, 0.055);
+        roadPlane(0, c+ox, span*0.7, sw, sidewalkMat, 0.055);
+      }
+    }
+  }
+
+  // yellow center dashes + white edge lines on main avenues
+  for(let t=-CITY*0.72;t<CITY*0.72;t+=18){
+    const ln=new THREE.Mesh(planeGeo, lineMat);
+    ln.scale.set(0.9,5,1); ln.rotation.x=-Math.PI/2; ln.position.set(0,0.065,t); cityRoot.add(ln);
+    const ln2=new THREE.Mesh(planeGeo, lineMat);
+    ln2.scale.set(5,0.9,1); ln2.rotation.x=-Math.PI/2; ln2.position.set(t,0.065,0); cityRoot.add(ln2);
+  }
+  for(const ox of [ROAD_W*0.42, -ROAD_W*0.42]){
+    const el=new THREE.Mesh(planeGeo, whiteLineMat);
+    el.scale.set(0.35, span*0.85, 1); el.rotation.x=-Math.PI/2; el.position.set(ox,0.062,0); cityRoot.add(el);
+    const el2=new THREE.Mesh(planeGeo, whiteLineMat);
+    el2.scale.set(span*0.85, 0.35, 1); el2.rotation.x=-Math.PI/2; el2.position.set(0,0.062,ox); cityRoot.add(el2);
+  }
+
+  // crosswalks at park + every block intersection on main axes
+  const cwSet = [[0,52],[0,-52],[52,0],[-52,0]];
+  for(let i=-half;i<=half;i++){
+    if(i===0) continue;
+    const c=i*BLOCK;
+    cwSet.push([0,c],[c,0]);
+  }
+  for(const [x,z] of cwSet){
+    const alongZ = Math.abs(x)<1;
+    for(let k=-3;k<=3;k++){
+      const stripe=new THREE.Mesh(planeGeo, crosswalkMat);
+      if(alongZ){ stripe.scale.set(ROAD_W*0.85,1.1,1); stripe.position.set(0,0.07,z+k*2.2); }
+      else { stripe.scale.set(1.1,ROAD_W*0.85,1); stripe.position.set(x+k*2.2,0.07,0); }
+      stripe.rotation.x=-Math.PI/2; cityRoot.add(stripe);
+    }
+  }
+
+  /* —— Dense multi-building blocks —— */
+  const offsets = [
+    [0.26, 0.26], [0.26, -0.26], [-0.26, 0.26], [-0.26, -0.26],
+    [0.0, 0.28], [0.0, -0.28], [0.28, 0.0], [-0.28, 0.0]
+  ];
   for(let ix=-half;ix<=half;ix++){
     for(let iz=-half;iz<=half;iz++){
-      if(Math.abs(ix)<1 && Math.abs(iz)<1) continue;
+      if(Math.abs(ix)<1 && Math.abs(iz)<1) continue; // park
       const cx=ix*BLOCK, cz=iz*BLOCK;
-      let px,pz;
-      if(Math.abs(ix)>=1 && Math.abs(iz)>=1){
-        px = cx + (ix>0?1:-1)*BLOCK*0.24;
-        pz = cz + (iz>0?1:-1)*BLOCK*0.24;
-      } else if(Math.abs(ix)<1){
-        px = (Math.random()>0.5?1:-1)*BLOCK*0.3;
-        pz = cz + (iz>=0?1:-1)*BLOCK*0.24;
-      } else {
-        pz = (Math.random()>0.5?1:-1)*BLOCK*0.3;
-        px = cx + (ix>=0?1:-1)*BLOCK*0.24;
-      }
       const dist = Math.abs(ix)+Math.abs(iz);
-      const isGlass = dist>=3 || Math.random()>0.45;
-      if(isGlass){
-        const w=18+Math.random()*22, d=18+Math.random()*22;
-        const h=40+Math.random()*Math.random()*140+(dist>4?30:0);
-        glassBuilds.push({x:px,z:pz,w,d,h,shade:0.7+Math.random()*0.35});
-      } else {
-        // brownstone / midrise row feel
-        const w=14+Math.random()*12, d=12+Math.random()*14;
-        const h=12+Math.random()*28;
-        brickBuilds.push({x:px,z:pz,w,d,h,shade:0.75+Math.random()*0.3});
+      const n = Math.min(q.perBlock, offsets.length);
+      // shuffle-ish pick
+      for(let bi=0; bi<n; bi++){
+        const [ox,oz] = offsets[(bi*3 + (ix+iz+7)*2) % offsets.length];
+        // keep clear of road center
+        let px = cx + ox * (BLOCK - ROAD_W*0.7);
+        let pz = cz + oz * (BLOCK - ROAD_W*0.7);
+        if(Math.abs(ix)<1){ px = (ox>0?1:-1) * (ROAD_W*0.5 + 18 + Math.random()*10); pz = cz + oz*(BLOCK*0.28); }
+        if(Math.abs(iz)<1){ pz = (oz>0?1:-1) * (ROAD_W*0.5 + 18 + Math.random()*10); px = cx + ox*(BLOCK*0.28); }
+
+        const downtown = dist <= 3;
+        const isGlass = downtown ? Math.random()>0.25 : Math.random()>0.55;
+        if(isGlass){
+          const w=12+Math.random()*18, d=12+Math.random()*18;
+          let h=28+Math.random()*Math.random()*160;
+          if(downtown) h+=20+Math.random()*60;
+          if(dist>5) h*=0.75;
+          glassBuilds.push({x:px,z:pz,w,d,h,shade:0.72+Math.random()*0.35});
+        } else {
+          const w=10+Math.random()*10, d=10+Math.random()*12;
+          const h=10+Math.random()*(downtown?36:24);
+          brickBuilds.push({x:px,z:pz,w,d,h,shade:0.75+Math.random()*0.3});
+        }
       }
     }
   }
   for(let i=0;i<q.extraTowers;i++){
     const a=Math.random()*Math.PI*2;
-    const r=280+Math.random()*150;
+    const r=220+Math.random()*200;
     glassBuilds.push({
       x:Math.cos(a)*r, z:Math.sin(a)*r,
-      w:16+Math.random()*24, d:16+Math.random()*24,
-      h:70+Math.random()*140, shade:0.8+Math.random()*0.25
+      w:14+Math.random()*22, d:14+Math.random()*22,
+      h:80+Math.random()*160, shade:0.8+Math.random()*0.25
     });
   }
 
@@ -407,8 +560,8 @@ function buildCity(q){
       dummy.rotation.set(0,0,0);
       dummy.updateMatrix();
       mesh.setMatrixAt(i, dummy.matrix);
-      if(mat===buildingMatBrick) color.setHSL(0.05, 0.35, 0.32*b.shade);
-      else color.setHSL(0.58, 0.12, 0.42*b.shade);
+      if(mat===buildingMatBrick) color.setHSL(0.05, 0.38, 0.34*b.shade);
+      else color.setHSL(0.58, 0.1, 0.45*b.shade);
       mesh.setColorAt(i, color);
       addCollider(b.x,b.z,b.w,b.d,b.h);
     }
@@ -418,45 +571,107 @@ function buildCity(q){
     return mesh;
   }
 
-  buildingMatGlass = new THREE.MeshLambertMaterial({
+  buildingMatGlass = new THREE.MeshStandardMaterial({
     color:0xffffff, map:nightGlass, emissive:0x1a2430,
-    emissiveMap:nightGlass, emissiveIntensity:isNight?0.95:0.12
+    emissiveMap:nightGlass, emissiveIntensity:isNight?1.05:0.1,
+    metalness:0.55, roughness:0.28
   });
-  buildingMatBrick = new THREE.MeshLambertMaterial({
+  buildingMatBrick = new THREE.MeshStandardMaterial({
     color:0xffffff, map:nightBrick, emissive:0x2a1810,
-    emissiveMap:nightBrick, emissiveIntensity:isNight?0.7:0.08
+    emissiveMap:nightBrick, emissiveIntensity:isNight?0.75:0.06,
+    metalness:0.08, roughness:0.82
   });
   buildingMeshGlass = makeInstanced(glassBuilds, buildingMatGlass);
   buildingMeshBrick = makeInstanced(brickBuilds, buildingMatBrick);
 
-  /* lamps */
+  /* Park ring lamps */
   if(q.lamps){
-    for(let a=0;a<Math.PI*2;a+=Math.PI/5){
-      const x=Math.cos(a)*52, z=Math.sin(a)*52;
+    for(let a=0;a<Math.PI*2;a+=Math.PI/6){
+      const x=Math.cos(a)*48, z=Math.sin(a)*48;
       const pole=new THREE.Mesh(cylGeo, lampPoleMat);
-      pole.scale.set(0.35,8,0.35); pole.position.set(x,4,z); cityRoot.add(pole);
+      pole.scale.set(0.32,7.5,0.32); pole.position.set(x,3.75,z); cityRoot.add(pole);
       const head=new THREE.Mesh(sphereGeo, lampHeadMat);
-      head.scale.set(1.1,1.1,1.1); head.position.set(x,8.1,z); cityRoot.add(head);
+      head.scale.set(1.0,1.0,1.0); head.position.set(x,7.6,z); cityRoot.add(head);
       lampHeads.push(head);
     }
   }
 
-  /* US-style billboards / district signs */
+  /* Street lamps along avenues */
+  if(q.streetLamps){
+    let lightBudget = q.lampLights;
+    const spacing = quality==='high' ? 48 : 64;
+    for(let t=-CITY*0.7; t<=CITY*0.7; t+=spacing){
+      for(const [lx,lz,onX] of [[ROAD_W*0.55,t,true],[-ROAD_W*0.55,t,true],[t,ROAD_W*0.55,false],[t,-ROAD_W*0.55,false]]){
+        if(Math.abs(t)<55) continue; // park area
+        const pole=new THREE.Mesh(cylGeo, lampPoleMat);
+        pole.scale.set(0.28,7,0.28); pole.position.set(lx,3.5,lz); cityRoot.add(pole);
+        const arm=new THREE.Mesh(boxGeo, lampPoleMat);
+        arm.scale.set(onX?1.6:0.25,0.18,onX?0.25:1.6);
+        arm.position.set(lx+(onX?(lx>0?-0.6:0.6):0), 7.0, lz+(onX?0:(lz>0?-0.6:0.6)));
+        cityRoot.add(arm);
+        const head=new THREE.Mesh(sphereGeo, lampHeadMat);
+        head.scale.set(0.7,0.5,0.7);
+        head.position.set(arm.position.x, 6.85, arm.position.z);
+        cityRoot.add(head); lampHeads.push(head);
+        if(lightBudget>0 && isNight){
+          const pl=new THREE.PointLight(0xffd8a0, 0.55, 42, 2);
+          pl.position.copy(head.position);
+          scene.add(pl); streetLampLights.push(pl); lightBudget--;
+        }
+      }
+    }
+  }
+
+  /* Traffic lights at main intersections */
+  if(q.traffic){
+    for(const [x,z] of [[48,48],[48,-48],[-48,48],[-48,-48],[BLOCK,BLOCK],[-BLOCK,BLOCK]]){
+      const pole=new THREE.Mesh(cylGeo, lampPoleMat);
+      pole.scale.set(0.25,5,0.25); pole.position.set(x,2.5,z); cityRoot.add(pole);
+      const box=new THREE.Mesh(boxGeo, new THREE.MeshStandardMaterial({color:0x1a1a1a, metalness:0.4, roughness:0.5}));
+      box.scale.set(0.45,1.1,0.35); box.position.set(x,5.2,z); cityRoot.add(box);
+      const colors=[0xff2222,0xffcc00,0x22cc44];
+      colors.forEach((col,i)=>{
+        const led=new THREE.Mesh(sphereGeo, new THREE.MeshBasicMaterial({color:col}));
+        led.scale.set(0.22,0.22,0.22); led.position.set(x,5.55-i*0.32,z+0.2); cityRoot.add(led);
+      });
+    }
+  }
+
+  /* District signs */
   const signs = [
-    ['CENTRAL PARK|中央公园', '#1a5c2e', '#ffffff', 0, 18, -70, 0],
-    ['DOWNTOWN|市中心', '#1a2a6c', '#ffdd44', 120, 28, 40, -0.6],
-    ['HARBOR|港湾', '#0a4060', '#a8e0ff', -140, 24, 80, 0.9],
-    ['5th AVE|第五大道', '#5a1a1a', '#ffffff', 40, 22, -150, 0.2],
+    ['CENTRAL PARK|中央公园', '#1a5c2e', '#ffffff', 0, 18, -62, 0],
+    ['DOWNTOWN|市中心', '#1a2a6c', '#ffdd44', 110, 32, 45, -0.6],
+    ['HARBOR|港湾', '#0a4060', '#a8e0ff', -130, 26, 90, 0.9],
+    ['5th AVE|第五大道', '#5a1a1a', '#ffffff', 45, 24, -140, 0.2],
+    ['MIDTOWN|中城', '#3a2060', '#e0c0ff', -90, 30, -110, 0.4],
   ].slice(0, q.signs);
   for(const [text,bg,fg,x,y,z,yaw] of signs){
     addBillboard(x,y,z,yaw, makeSignTexture(text,bg,fg));
   }
 
-  /* sparse yellow taxis (static props or slow movers) */
+  /* Parked cars */
+  const carColors=[0xc04040,0x4060c0,0xe8e8e8,0x2a2a2a,0x40a060,0xd08030];
+  for(let i=0;i<q.parked;i++){
+    const alongMain=Math.random()>0.5;
+    const t=(Math.random()-0.5)*CITY*1.1;
+    const side=(Math.random()>0.5?1:-1)*(ROAD_W*0.5+3.5);
+    if(Math.abs(t)<60) continue;
+    const g=new THREE.Group();
+    const col=carColors[i%carColors.length];
+    const body=new THREE.Mesh(boxGeo, new THREE.MeshStandardMaterial({color:col, metalness:0.45, roughness:0.4}));
+    body.scale.set(1.7,0.65,3.4); body.position.y=0.55; g.add(body);
+    const cabin=new THREE.Mesh(boxGeo, new THREE.MeshStandardMaterial({color:0x1a2838, metalness:0.5, roughness:0.25, transparent:true, opacity:0.85}));
+    cabin.scale.set(1.55,0.5,1.6); cabin.position.set(0,1.0,-0.15); g.add(cabin);
+    if(alongMain){ g.position.set(side,0,t); g.rotation.y=0; }
+    else { g.position.set(t,0,side); g.rotation.y=Math.PI/2; }
+    cityRoot.add(g);
+  }
+
+  /* Yellow taxis */
   for(let i=0;i<q.taxis;i++){
     const alongMain = Math.random()>0.5;
     const t = (Math.random()-0.5)*CITY*1.2;
-    const lane = (Math.random()>0.5?1:-1)*5;
+    const lane = (Math.random()>0.5?1:-1)*4.5;
     const g=new THREE.Group();
     const body=new THREE.Mesh(boxGeo, taxiMat);
     body.scale.set(1.6,0.7,3.2); body.position.y=0.55; g.add(body);
@@ -472,15 +687,13 @@ function buildCity(q){
     else { g.position.set(t,0,lane); g.rotation.y=Math.PI/2; }
     cityRoot.add(g);
     taxis.push({
-      mesh:g,
-      alongMain,
-      t,
-      lane,
-      speed:(2+Math.random()*3)*(Math.random()>0.5?1:-1),
+      mesh:g, alongMain, t, lane,
+      speed:(2.5+Math.random()*3.5)*(Math.random()>0.5?1:-1),
       yaw: alongMain?0:Math.PI/2
     });
   }
 }
+
 
 /* ========== CYBERTRUCK (recognizable + Tesla logo) ========== */
 const car = new THREE.Group();
@@ -791,24 +1004,47 @@ function updateCamera(dt){
 function setDayNight(night){
   isNight=night;
   const q=QUAL[quality];
+  // refresh street lamp point lights when toggling
+  for(const L of streetLampLights){ scene.remove(L); try{L.dispose();}catch(e){} }
+  streetLampLights.length=0;
+
   if(isNight){
-    scene.background.setHex(0x0a1220); scene.fog.color.setHex(0x0a1220); scene.fog.density=q.fogN;
-    hemi.intensity=0.55; sun.intensity=0.35; sun.color.setHex(0x99aacc); amb.intensity=0.3;
+    skyMat.map = skyNightTex; skyMat.needsUpdate=true;
+    scene.background.setHex(0x0a1220); scene.fog.color.setHex(0x121a2a); scene.fog.density=q.fogN;
+    hemi.intensity=0.45; hemi.color.setHex(0x6a88bb); hemi.groundColor.setHex(0x1a1520);
+    sun.intensity=0.28; sun.color.setHex(0x8899bb);
+    amb.intensity=0.28; fill.intensity=0.15; fill.color.setHex(0x4455aa);
+    renderer.toneMappingExposure = quality==='high' ? 0.95 : 1.0;
     if(buildingMatGlass){
-      buildingMatGlass.map=nightGlass; buildingMatGlass.emissiveMap=nightGlass; buildingMatGlass.emissiveIntensity=0.95; buildingMatGlass.needsUpdate=true;
-      buildingMatBrick.map=nightBrick; buildingMatBrick.emissiveMap=nightBrick; buildingMatBrick.emissiveIntensity=0.7; buildingMatBrick.needsUpdate=true;
+      buildingMatGlass.map=nightGlass; buildingMatGlass.emissiveMap=nightGlass; buildingMatGlass.emissiveIntensity=1.05; buildingMatGlass.needsUpdate=true;
+      buildingMatBrick.map=nightBrick; buildingMatBrick.emissiveMap=nightBrick; buildingMatBrick.emissiveIntensity=0.75; buildingMatBrick.needsUpdate=true;
     }
     lampHeadMat.color.setHex(0xffe0a0);
-    car.userData.headLight.intensity = QUAL[quality].headlight ? 1.6 : 0;
+    car.userData.headLight.intensity = QUAL[quality].headlight ? 1.8 : 0;
+    // recreate a few street lights on high
+    if(q.lampLights>0){
+      let n=q.lampLights;
+      for(const h of lampHeads){
+        if(n<=0) break;
+        if(Math.random()>0.55) continue;
+        const pl=new THREE.PointLight(0xffd8a0, 0.5, 40, 2);
+        pl.position.copy(h.position);
+        scene.add(pl); streetLampLights.push(pl); n--;
+      }
+    }
   } else {
-    scene.background.setHex(0x6fa0c8); scene.fog.color.setHex(0x6fa0c8); scene.fog.density=q.fogD;
-    hemi.intensity=0.9; sun.intensity=1.2; sun.color.setHex(0xfff0d0); amb.intensity=0.4;
+    skyMat.map = skyDayTex; skyMat.needsUpdate=true;
+    scene.background.setHex(0x6fa0c8); scene.fog.color.setHex(0x8eb8d8); scene.fog.density=q.fogD;
+    hemi.intensity=0.95; hemi.color.setHex(0xb8d8ff); hemi.groundColor.setHex(0x6a6048);
+    sun.intensity=1.35; sun.color.setHex(0xfff2d8);
+    amb.intensity=0.42; fill.intensity=0.3; fill.color.setHex(0x88b0d0);
+    renderer.toneMappingExposure = quality==='high' ? 1.08 : 1.05;
     if(buildingMatGlass){
-      buildingMatGlass.map=dayGlass; buildingMatGlass.emissiveMap=dayGlass; buildingMatGlass.emissiveIntensity=0.12; buildingMatGlass.needsUpdate=true;
-      buildingMatBrick.map=dayBrick; buildingMatBrick.emissiveMap=dayBrick; buildingMatBrick.emissiveIntensity=0.08; buildingMatBrick.needsUpdate=true;
+      buildingMatGlass.map=dayGlass; buildingMatGlass.emissiveMap=dayGlass; buildingMatGlass.emissiveIntensity=0.1; buildingMatGlass.needsUpdate=true;
+      buildingMatBrick.map=dayBrick; buildingMatBrick.emissiveMap=dayBrick; buildingMatBrick.emissiveIntensity=0.06; buildingMatBrick.needsUpdate=true;
     }
     lampHeadMat.color.setHex(0x888888);
-    car.userData.headLight.intensity = QUAL[quality].headlight ? 0.25 : 0;
+    car.userData.headLight.intensity = QUAL[quality].headlight ? 0.2 : 0;
   }
 }
 function toggleDayNight(){ setDayNight(!isNight); toast(isNight?'夜晚模式':'白天模式'); }
@@ -819,23 +1055,31 @@ function applyQuality(name, rebuild){
   const q=QUAL[quality];
   renderer.setPixelRatio(Math.min(devicePixelRatio, q.pr));
   renderer.setSize(innerWidth, innerHeight, false);
-  renderer.toneMapping = q.tone===2 ? THREE.ACESFilmicToneMapping : (q.tone===1 ? THREE.LinearToneMapping : THREE.NoToneMapping);
-  renderer.toneMappingExposure = q.tone===2 ? 1.0 : 1.05;
+  renderer.toneMapping = q.tone>=2 ? THREE.ACESFilmicToneMapping : (q.tone===1 ? THREE.LinearToneMapping : THREE.NoToneMapping);
+  renderer.toneMappingExposure = isNight ? 1.0 : 1.08;
   renderer.shadowMap.enabled=q.shadows;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   sun.castShadow=q.shadows;
   if(q.shadows){
     sun.shadow.mapSize.set(q.shadowSize,q.shadowSize);
     const sc=sun.shadow.camera;
-    sc.near=20; sc.far=400; sc.left=-120; sc.right=120; sc.top=120; sc.bottom=-120;
-    sun.shadow.bias=-0.001;
+    sc.near=10; sc.far=520; sc.left=-180; sc.right=180; sc.top=180; sc.bottom=-180;
+    sun.shadow.bias=-0.0004; sun.shadow.normalBias=0.04;
+    sun.position.set(160,260,80);
+  }
+  if(car){
+    car.traverse(o=>{ if(o.isMesh){ o.castShadow=q.shadows; o.receiveShadow=q.shadows; }});
   }
   camera.far=q.far; camera.updateProjectionMatrix();
-  const texSize = quality==='high'?32 : quality==='med'?24 : 16;
+  const texSize = quality==='high'?48 : quality==='med'?32 : 20;
   if(dayGlass){ dayGlass.dispose(); nightGlass.dispose(); dayBrick.dispose(); nightBrick.dispose(); }
   dayGlass=makeWindowTexture(false, texSize, 'glass');
   nightGlass=makeWindowTexture(true, texSize, 'glass');
   dayBrick=makeWindowTexture(false, texSize, 'brick');
   nightBrick=makeWindowTexture(true, texSize, 'brick');
+  if(!asphaltTex){ asphaltTex=makeAsphaltTex(); sidewalkTex=makeSidewalkTex(); skyDayTex=makeSkyTex(false); skyNightTex=makeSkyTex(true); }
+  skyMat.map = isNight ? skyNightTex : skyDayTex; skyMat.needsUpdate=true;
+  roadMat.map=asphaltTex; sidewalkMat.map=sidewalkTex;
   if(rebuild) buildCity(q);
   else {
     if(buildingMatGlass){
